@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SI Pengadaan Barang/Jasa - Kemenag Kab. Indramayu</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <div id="app-root">
+
+    <!-- ===================== VIEW: LOGIN ===================== -->
+    <div id="view-login" class="view">
+      <div class="login-card">
+        <div class="login-header">
+          <h1>Sistem Informasi Pengadaan Barang/Jasa</h1>
+          <p>Kementerian Agama Kabupaten Indramayu</p>
+        </div>
+
+        <form id="form-login" autocomplete="off">
+          <label for="input-username">Username / Email</label>
+          <input type="text" id="input-username" autocomplete="username" required>
+
+          <label for="input-password">Password</label>
+          <div class="password-wrap">
+            <input type="password" id="input-password" autocomplete="current-password" required>
+            <button type="button" id="btn-toggle-password" aria-label="Tampilkan/sembunyikan password">&#128065;</button>
+          </div>
+
+          <label for="input-captcha">Kode Keamanan</label>
+          <div class="captcha-wrap">
+            <canvas id="captcha-canvas" width="150" height="50" aria-label="Gambar kode keamanan"></canvas>
+            <button type="button" id="btn-refresh-captcha" title="Muat ulang kode" aria-label="Muat ulang kode">&#8635;</button>
+          </div>
+          <input type="text" id="input-captcha" autocomplete="off" required placeholder="Ketik kode pada gambar di atas">
+
+          <div id="login-error" class="error-text" role="alert"></div>
+          <button type="submit" id="btn-login">MASUK</button>
+        </form>
+
+        <p class="login-footer">Internal System — Kementerian Agama Kabupaten Indramayu</p>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW: APLIKASI ===================== -->
+    <div id="view-app" class="view" style="display:none;">
+      <aside class="sidebar">
+        <div class="sidebar-brand">SI Pengadaan</div>
+        <nav>
+          <a href="#/dashboard" data-view="dashboard">Dashboard</a>
+          <a href="#/satker" data-view="satker">Satker</a>
+          <a href="#/years" data-view="years" class="admin-only">Tahun Anggaran</a>
+          <a href="#/assignments" data-view="assignments" class="admin-only">Assignment</a>
+          <a href="#/users" data-view="users" class="admin-only">Pengguna</a>
+          <a href="#/audit" data-view="audit" class="admin-only">Audit Log</a>
+          <a href="#/profile" data-view="profile">Ganti Password</a>
+        </nav>
+      </aside>
+      <div class="main-area">
+        <header class="topbar">
+          <span id="topbar-user"></span>
+          <button id="btn-logout">Keluar</button>
+        </header>
+        <main id="content-area"></main>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" style="display:none;"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
