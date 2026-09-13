@@ -1,4 +1,4 @@
-  var currentCaptchaChallengeId = null;
+var currentCaptchaChallengeId = null;
 
   /**
    * Menggambar teks CAPTCHA ke <canvas> dengan distorsi (rotasi acak, warna acak,
@@ -45,13 +45,39 @@
     }
   }
 
+  // BARU: kalau permintaan CAPTCHA ke backend gagal (API_URL belum diisi, CORS,
+  // Web App belum ter-deploy, dsb.), gambar pesannya LANGSUNG DI DALAM kanvas
+  // itu sendiri -- supaya kotaknya tidak cuma diam kosong tanpa penjelasan.
+  function showCaptchaError(canvas) {
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#FBEAEA';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#B3261E';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Gagal memuat.', w / 2, h / 2 - 7);
+    ctx.fillText('Klik \u21BB untuk coba lagi.', w / 2, h / 2 + 7);
+  }
+
   function loadCaptcha() {
+    var canvasEl = document.getElementById('captcha-canvas');
+    if (!canvasEl) {
+      appError('loadCaptcha: elemen #captcha-canvas tidak ditemukan di halaman.');
+      return;
+    }
+    appLog('loadCaptcha: meminta CAPTCHA baru dari', (typeof API_URL !== 'undefined' ? API_URL : '(API_URL tidak terbaca)'));
     callApi('auth', 'getCaptcha', {}).then(function (data) {
+      appLog('loadCaptcha: berhasil, menggambar kode ->', data);
       currentCaptchaChallengeId = data.challengeId;
-      drawCaptcha(document.getElementById('captcha-canvas'), data.text);
+      drawCaptcha(canvasEl, data.text);
       document.getElementById('input-captcha').value = '';
     }).catch(function (err) {
-      showToast('Gagal memuat kode keamanan: ' + err.message, true);
+      appError('loadCaptcha: GAGAL memuat CAPTCHA ->', err);
+      showCaptchaError(canvasEl);
+      showToast('Gagal memuat kode keamanan: ' + (err && err.message), true);
     });
   }
 
@@ -70,15 +96,19 @@
     btn.disabled = true;
     btn.textContent = 'Memproses...';
 
+    appLog('login: mencoba login untuk username ->', document.getElementById('input-username').value);
+
     callApi('auth', 'login', {
       username: document.getElementById('input-username').value,
       password: document.getElementById('input-password').value,
       captchaChallengeId: currentCaptchaChallengeId,
       captchaAnswer: document.getElementById('input-captcha').value
     }).then(function (data) {
+      appLog('login: berhasil, masuk sebagai ->', data.user);
       setSessionToken(data.sessionToken);
       startApp(data.user);
     }).catch(function (err) {
+      appError('login: GAGAL ->', err);
       errEl.textContent = err.message || 'Login gagal.';
       loadCaptcha(); // CAPTCHA sekali pakai — selalu muat ulang setelah percobaan apa pun
       document.getElementById('input-password').value = '';
@@ -88,6 +118,7 @@
   });
 
   document.getElementById('btn-logout').addEventListener('click', function () {
+    appLog('logout: mengakhiri sesi...');
     callApi('auth', 'logout', {}).finally(function () {
       setSessionToken(null);
       location.hash = '';
@@ -103,10 +134,17 @@
 
   function checkExistingSession() {
     var token = getSessionToken();
-    if (!token) { showLoginView(); return; }
+    if (!token) {
+      appLog('checkExistingSession: tidak ada token tersimpan -> tampilkan halaman login.');
+      showLoginView();
+      return;
+    }
+    appLog('checkExistingSession: token ditemukan, memvalidasi ke server...');
     callApi('auth', 'getCurrentUser', {}).then(function (user) {
+      appLog('checkExistingSession: sesi valid, lanjut sebagai ->', user);
       startApp(user);
-    }).catch(function () {
+    }).catch(function (err) {
+      appWarn('checkExistingSession: sesi tidak valid/kedaluwarsa ->', err);
       setSessionToken(null);
       showLoginView();
     });

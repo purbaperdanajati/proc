@@ -11,3 +11,11 @@
  * Jadi setelah diisi sekali, umumnya tidak perlu diubah lagi untuk update rutin.
  */
 const API_URL = 'https://script.google.com/macros/s/AKfycbzIzZ7f3zjF8G6JiIHyikVHwYfZ1Ml-_QUWJ89xuTXlJtsNHEA3JH8K9c3pngE-E7YkWA/exec';
+
+/**
+ * Nyalakan/matikan log aplikasi di console browser (F12 -> tab Console) dari
+ * SATU saklar ini saja. Set ke false kalau sistem sudah stabil dan tidak
+ * sedang didebug -- semua pemanggilan appLog/appWarn/appError di file lain
+ * (lihat utils.js) otomatis ikut diam, tidak perlu diubah satu-satu.
+ */
+const ENABLE_LOGGING = true;

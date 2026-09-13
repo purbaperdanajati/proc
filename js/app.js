@@ -1,7 +1,8 @@
-  var currentUser = null;
+var currentUser = null;
 
   function startApp(user) {
     currentUser = user;
+    appLog('startApp: aplikasi dimulai untuk ->', user.nama, '(' + user.role + ')');
     document.getElementById('view-login').style.display = 'none';
     document.getElementById('view-app').style.display = '';
     document.getElementById('topbar-user').textContent = user.nama + ' (' + user.role + ')';
@@ -25,6 +26,7 @@
     var hash = location.hash || '#/dashboard';
     var parts = hash.replace('#/', '').split('/');
     var viewName = parts[0] || 'dashboard';
+    appLog('renderRoute: navigasi ->', viewName, parts[1] || '');
 
     document.querySelectorAll('.sidebar nav a').forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('data-view') === viewName);
@@ -47,6 +49,7 @@
   }
 
   function renderError(content, err) {
+    appError('renderError:', err);
     content.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Terjadi kesalahan.') + '</p>';
   }
 

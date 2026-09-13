@@ -13,9 +13,14 @@
  * bagian "Kenapa CORS-nya begini" untuk penjelasan lengkap.
  */
 async function callApi(module, action, payload) {
+  var actionPath = module + '.' + action;
+
   if (!API_URL || API_URL.indexOf('PASTE_URL') !== -1) {
+    appError(actionPath + ': API_URL belum diisi di js/config.js. Isi dulu dengan URL Web App Apps Script Anda.');
     throw { errorCode: 'CONFIG_ERROR', message: 'API_URL belum diisi di js/config.js.' };
   }
+
+  appLog(actionPath + ': mengirim permintaan ->', API_URL, payload || {});
 
   var response;
   try {
@@ -33,6 +38,10 @@ async function callApi(module, action, payload) {
       // menyertakan credentials justru mempersulit CORS tanpa manfaat apa pun.
     });
   } catch (networkErr) {
+    // Kalau ini muncul di console: hampir selalu berarti CORS diblokir browser,
+    // API_URL salah/typo, atau Web App belum ter-deploy. Cek tab Network di
+    // DevTools untuk lihat request-nya persis gagal di mana.
+    appError(actionPath + ': GAGAL fetch (kemungkinan CORS/jaringan/API_URL salah) ->', networkErr);
     throw { errorCode: 'NETWORK_ERROR', message: 'Gagal terhubung ke server. Periksa koneksi internet atau API_URL di config.js.' };
   }
 
@@ -40,9 +49,14 @@ async function callApi(module, action, payload) {
   try {
     res = await response.json();
   } catch (parseErr) {
+    appError(actionPath + ': respons server bukan JSON valid ->', parseErr, response.status);
     throw { errorCode: 'BAD_RESPONSE', message: 'Respons server tidak dapat dibaca (bukan JSON valid).' };
   }
 
-  if (res && res.success) return res.data;
+  if (res && res.success) {
+    appLog(actionPath + ': sukses ->', res.data);
+    return res.data;
+  }
+  appWarn(actionPath + ': server menjawab gagal ->', res);
   throw res || { errorCode: 'UNKNOWN', message: 'Terjadi kesalahan tidak diketahui.' };
 }

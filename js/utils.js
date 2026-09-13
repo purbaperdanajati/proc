@@ -1,3 +1,21 @@
+/**
+   * Logger aplikasi -- dipakai di seluruh file js/* LAIN (bukan console.log
+   * langsung), supaya bisa dimatikan semua sekaligus dari satu saklar
+   * ENABLE_LOGGING di config.js, tanpa mengubah file satu-satu.
+   */
+  function appLog() {
+    if (typeof ENABLE_LOGGING !== 'undefined' && !ENABLE_LOGGING) return;
+    console.log.apply(console, ['[SI Pengadaan]'].concat(Array.prototype.slice.call(arguments)));
+  }
+  function appWarn() {
+    if (typeof ENABLE_LOGGING !== 'undefined' && !ENABLE_LOGGING) return;
+    console.warn.apply(console, ['[SI Pengadaan]'].concat(Array.prototype.slice.call(arguments)));
+  }
+  function appError() {
+    if (typeof ENABLE_LOGGING !== 'undefined' && !ENABLE_LOGGING) return;
+    console.error.apply(console, ['[SI Pengadaan]'].concat(Array.prototype.slice.call(arguments)));
+  }
+
   function showToast(message, isError) {
     var el = document.getElementById('toast');
     el.textContent = message;
