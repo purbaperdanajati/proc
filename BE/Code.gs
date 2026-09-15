@@ -83,6 +83,15 @@ function apiCall(module, action, payload, sessionToken) {
       case 'years': result = YearsService.handle(action, payload || {}, sessionToken); break;
       case 'audit': result = AuditService.handle(action, payload || {}, sessionToken); break;
       case 'dashboard': result = DashboardService.handle(action, payload || {}, sessionToken); break;
+      case 'jenisPengadaan': result = JenisPengadaanService.handle(action, payload || {}, sessionToken); break;
+      case 'pagu': result = PaguService.handle(action, payload || {}, sessionToken); break;
+      case 'paket': result = PaketService.handle(action, payload || {}, sessionToken); break;
+      case 'providers': result = ProvidersService.handle(action, payload || {}, sessionToken); break;
+      case 'documents': result = DocumentsService.handle(action, payload || {}, sessionToken); break;
+      case 'templates': result = TemplatesService.handle(action, payload || {}, sessionToken); break;
+      case 'kak': result = KakService.handle(action, payload || {}, sessionToken); break;
+      case 'hps': result = HpsService.handle(action, payload || {}, sessionToken); break;
+      case 'reports': result = ReportsService.handle(action, payload || {}, sessionToken); break;
       default: throw AppError_('UNKNOWN_MODULE', 'Modul tidak dikenal: ' + module);
     }
     logServer_(requestId, actionPath, 'SUCCESS');

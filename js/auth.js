@@ -93,8 +93,7 @@ var currentCaptchaChallengeId = null;
     var btn = document.getElementById('btn-login');
     var errEl = document.getElementById('login-error');
     errEl.textContent = '';
-    btn.disabled = true;
-    btn.textContent = 'Memproses...';
+    var restore = setButtonBusy(btn, 'Memproses...');
 
     appLog('login: mencoba login untuk username ->', document.getElementById('input-username').value);
 
@@ -112,8 +111,7 @@ var currentCaptchaChallengeId = null;
       errEl.textContent = err.message || 'Login gagal.';
       loadCaptcha(); // CAPTCHA sekali pakai — selalu muat ulang setelah percobaan apa pun
       document.getElementById('input-password').value = '';
-      btn.disabled = false;
-      btn.textContent = 'MASUK';
+      restore();
     });
   });
 

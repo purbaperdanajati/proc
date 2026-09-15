@@ -6,6 +6,21 @@
   <title>SI Pengadaan Barang/Jasa - Kemenag Kab. Indramayu</title>
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/login.css">
+
+  <!--
+    Library pihak ketiga (Keputusan 3: grid HPS pakai library, bukan buatan sendiri).
+    Versi DIPIN ke major version sesuai instruksi "versi harus dipin, sumber
+    didokumentasikan". Sengaja dipin ke v4 (bukan v5 terbaru) karena API v4
+    yang dipakai kode ini; v5 mengubah beberapa API-nya.
+      - jspreadsheet CE  : grid ala Excel + paste multi-sel   (MIT, github.com/jspreadsheet/ce)
+      - jsuites          : dependensi wajib jspreadsheet CE   (MIT, jsuites.net)
+      - SheetJS (xlsx)   : baca file .xlsx/.xls/.csv di browser (Apache-2.0, sheetjs.com)
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.min.css" type="text/css">
+  <script src="https://cdn.jsdelivr.net/npm/jsuites@4/dist/jsuites.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites@4/dist/jsuites.min.css" type="text/css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="app-root">
@@ -50,6 +65,10 @@
         <nav>
           <a href="#/dashboard" data-view="dashboard">Dashboard</a>
           <a href="#/satker" data-view="satker">Satker</a>
+          <a href="#/pagu" data-view="pagu">Pagu</a>
+          <a href="#/penyedia" data-view="penyedia">Penyedia</a>
+          <a href="#/paket" data-view="paket">Paket</a>
+          <a href="#/laporan" data-view="laporan">Laporan</a>
           <a href="#/years" data-view="years" class="admin-only">Tahun Anggaran</a>
           <a href="#/assignments" data-view="assignments" class="admin-only">Assignment</a>
           <a href="#/users" data-view="users" class="admin-only">Pengguna</a>
@@ -59,9 +78,11 @@
       </aside>
       <div class="main-area">
         <header class="topbar">
+          <input type="search" id="global-search" placeholder="Cari satker, paket, penyedia..." autocomplete="off">
           <span id="topbar-user"></span>
           <button id="btn-logout">Keluar</button>
         </header>
+        <div id="search-results" class="search-results" style="display:none;"></div>
         <main id="content-area"></main>
       </div>
     </div>

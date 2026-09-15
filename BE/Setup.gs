@@ -41,6 +41,106 @@ var SEED_JENIS_PENGADAAN = [
   { kode: 'BUKU', nama: 'Buku' }
 ];
 
+// Checklist dokumen default (Tahap 5), sesuai daftar pada brief awal. Semua
+// jenis_pengadaan_id dikosongkan = berlaku untuk SEMUA jenis pengadaan --
+// admin bisa mempersempit ke jenis tertentu atau menambah/mengubah lewat UI,
+// bukan dikunci permanen di kode. "kondisi" pakai format terbatas field=value
+// (lihat evaluateKondisi_ di Documents.gs), bukan eval() bebas.
+var SEED_DOCUMENT_REQUIREMENTS = [
+  { kode: 'SK-PPK', nama: 'SK PPK', wajib: 'WAJIB', multiple: false, urutan: 1 },
+  { kode: 'SK-PP', nama: 'SK Pejabat Pengadaan', wajib: 'WAJIB', multiple: false, urutan: 2 },
+  { kode: 'RUP', nama: 'RUP', wajib: 'WAJIB', multiple: false, urutan: 3 },
+  { kode: 'KAK', nama: 'KAK', wajib: 'WAJIB', multiple: false, urutan: 4 },
+  { kode: 'HPS', nama: 'HPS', wajib: 'WAJIB', multiple: false, urutan: 5 },
+  { kode: 'SURAT-PESANAN', nama: 'Surat Pesanan', wajib: 'WAJIB', multiple: false, urutan: 6 },
+  { kode: 'DOK-SEBELUM', nama: 'Dokumentasi Sebelum Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 7 },
+  { kode: 'DOK-PROSES', nama: 'Dokumentasi Proses Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 8 },
+  { kode: 'DOK-SETELAH', nama: 'Dokumentasi Setelah Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 9 },
+  { kode: 'BAST-INPROC', nama: 'BAST INPROC', wajib: 'WAJIB', multiple: false, urutan: 10 },
+  { kode: 'BAST-MANUAL', nama: 'BAST Manual', wajib: 'WAJIB', multiple: false, urutan: 11 },
+  { kode: 'SPM', nama: 'SPM', wajib: 'WAJIB', multiple: false, urutan: 12 },
+  { kode: 'SP2D', nama: 'SP2D', wajib: 'WAJIB', multiple: false, urutan: 13 },
+  { kode: 'FAKTUR', nama: 'Faktur', wajib: 'KONDISIONAL', kondisi: 'ada_pph=true', multiple: false, urutan: 14 },
+  { kode: 'BUPOT', nama: 'Bukti Potong Pajak (Bupot)', wajib: 'KONDISIONAL', kondisi: 'ada_pph=true', multiple: false, urutan: 15 },
+  { kode: 'COMPANY-PROFILE', nama: 'Company Profile', wajib: 'WAJIB', multiple: false, urutan: 16 },
+  { kode: 'HASIL-MONEV', nama: 'Hasil Monev', wajib: 'WAJIB', multiple: false, urutan: 17 },
+  { kode: 'DOK-MONEV', nama: 'Dokumentasi Monev', wajib: 'WAJIB', multiple: true, urutan: 18 }
+];
+
+/**
+ * Template KAK default (Tahap 6). Strukturnya mengikuti 13 bagian dokumen
+ * contoh yang Anda berikan, TAPI seluruh isinya dinamis lewat placeholder
+ * {{...}} -- tidak ada nama satker/pejabat/nominal yang di-hardcode. Admin
+ * bisa menyunting atau membuat template khusus per jenis pengadaan lewat
+ * TemplatesService, jadi ini hanya titik awal, bukan kunci permanen.
+ *
+ * Catatan: CSS sengaja dibuat sederhana (tabel + font dasar) karena konverter
+ * HTML->PDF Apps Script hanya mendukung rendering dasar -- lihat komentar di
+ * kepala KakService.gs.
+ */
+var SEED_TEMPLATE_KAK = [
+  '<div style="font-family:Arial,sans-serif;font-size:11pt;">',
+  '<div style="text-align:center;font-weight:bold;">',
+  'KERANGKA ACUAN KERJA (KAK)/SPESIFIKASI TEKNIS<br>',
+  '{{NAMA_PAKET}}<br>KABUPATEN INDRAMAYU',
+  '</div><br>',
+  '<table style="width:100%;border-collapse:collapse;" cellpadding="4">',
+  '<tr><td style="width:22%;vertical-align:top;">Pekerjaan</td><td style="width:3%;vertical-align:top;">:</td><td>{{NAMA_PAKET}}</td></tr>',
+  '<tr><td style="vertical-align:top;">1. LATAR BELAKANG</td><td style="vertical-align:top;">:</td><td style="text-align:justify;">',
+  'Peningkatan kualitas pelayanan publik perlu didukung pengelolaan keuangan yang efektif, efisien, transparan, dan akuntabel. ',
+  'Untuk meningkatkan efisiensi dan efektivitas penggunaan keuangan negara yang dibelanjakan melalui proses Pengadaan Barang/Jasa Pemerintah, ',
+  'diperlukan upaya menciptakan keterbukaan, transparansi, dan akuntabilitas.<br><br>',
+  '{{NAMA_SATKER}} Tahun Anggaran {{TAHUN_ANGGARAN}} melaksanakan kegiatan pengadaan {{JENIS_PENGADAAN}} ',
+  'dengan arahan kebijakan untuk meningkatkan kualitas layanan melalui pemenuhan sarana dan prasarana pendukung.',
+  '</td></tr>',
+  '<tr><td style="vertical-align:top;">2. DASAR HUKUM</td><td style="vertical-align:top;">:</td><td>',
+  '1. Undang-undang Nomor 17 Tahun 2003 tentang Keuangan Negara;<br>',
+  '2. Undang-undang Nomor 1 Tahun 2004 tentang Perbendaharaan Negara;<br>',
+  '3. Undang-undang Nomor 15 Tahun 2004 tentang Pemeriksaan Pengelolaan dan Tanggung Jawab Keuangan Negara;<br>',
+  '4. Peraturan Presiden Nomor 16 Tahun 2018 tentang Pengadaan Barang/Jasa Pemerintah sebagaimana telah diubah terakhir dengan Peraturan Presiden Nomor 46 Tahun 2025;<br>',
+  '5. Peraturan Menteri Agama Nomor 3 Tahun 2022 tentang Unit Kerja Pengadaan Barang/Jasa;<br>',
+  '6. DIPA Satker {{NAMA_SATKER}} Tahun Anggaran {{TAHUN_ANGGARAN}} Nomor: {{SP_DIPA}} tanggal {{TANGGAL_DIPA}}.<br>',
+  '<i style="font-size:9pt;">(PERINGATAN ADMINISTRATIF: daftar dasar hukum ini template awal -- mohon disesuaikan dan dikonfirmasi ke bagian hukum/UKPBJ sebelum dipakai resmi.)</i>',
+  '</td></tr>',
+  '<tr><td style="vertical-align:top;">3. MAKSUD DAN TUJUAN</td><td style="vertical-align:top;">:</td><td>',
+  'a. Maksud pengadaan ini adalah untuk memenuhi kebutuhan sarana dan prasarana pada {{NAMA_SATKER}}.<br>',
+  'b. Tujuannya adalah untuk meningkatkan kualitas pelayanan pada {{NAMA_SATKER}}.</td></tr>',
+  '<tr><td style="vertical-align:top;">4. TARGET DAN SASARAN</td><td style="vertical-align:top;">:</td><td style="text-align:justify;">',
+  'Terpenuhinya kebutuhan sarana dan prasarana sehingga meningkatkan kualitas pelayanan pada {{NAMA_SATKER}}.</td></tr>',
+  '<tr><td style="vertical-align:top;">5. NAMA ORGANISASI PENGADAAN BARANG/JASA</td><td style="vertical-align:top;">:</td><td>',
+  'a. K/L/D/I : Kementerian Agama<br>',
+  '&nbsp;&nbsp;&nbsp;Satker : {{NAMA_SATKER}}<br>',
+  'b. KPA : {{KPA}}<br>',
+  '&nbsp;&nbsp;&nbsp;PPK : {{PPK}}<br>',
+  '&nbsp;&nbsp;&nbsp;Pejabat Pengadaan : {{PEJABAT_PENGADAAN}}</td></tr>',
+  '<tr><td style="vertical-align:top;">6. SUMBER DANA DAN PEMBIAYAAN</td><td style="vertical-align:top;">:</td><td>',
+  'a. Sumber Dana : {{SUMBER_DANA}}<br>',
+  'b. Total Perkiraan Biaya Pekerjaan : {{PAGU}}<br>',
+  '&nbsp;&nbsp;&nbsp;({{PAGU_TERBILANG}})</td></tr>',
+  '<tr><td style="vertical-align:top;">7. JENIS KONTRAK</td><td style="vertical-align:top;">:</td><td>{{JENIS_KONTRAK}}</td></tr>',
+  '<tr><td style="vertical-align:top;">8. JANGKA WAKTU PELAKSANAAN</td><td style="vertical-align:top;">:</td><td>',
+  '{{JANGKA_WAKTU}} sejak ditandatanganinya Surat Pesanan</td></tr>',
+  '<tr><td style="vertical-align:top;">9. RUANG LINGKUP, LOKASI PEKERJAAN</td><td style="vertical-align:top;">:</td><td>',
+  'a. {{NAMA_PAKET}}<br>b. Lokasi di {{LOKASI}}</td></tr>',
+  '<tr><td style="vertical-align:top;">10. KELUARAN/PRODUK YANG DIHASILKAN</td><td style="vertical-align:top;">:</td><td style="text-align:justify;">',
+  'Paket pengadaan ini harus memiliki jaminan kualitas. Apabila ditemukan barang yang mengalami kerusakan, harus dapat dilakukan perbaikan atau penggantian dengan spesifikasi barang yang sama.</td></tr>',
+  '<tr><td style="vertical-align:top;">11. PERSYARATAN PENYEDIA</td><td style="vertical-align:top;">:</td><td style="text-align:justify;">',
+  'a. Memiliki izin usaha sesuai bidang pekerjaan dengan KBLI yang relevan;<br>',
+  'b. Memiliki NIB;<br>',
+  'c. Akta Pendirian Perusahaan beserta perubahannya;<br>',
+  'd. Tidak dalam pengawasan pengadilan, tidak pailit, dan kegiatan usahanya tidak sedang diberhentikan;<br>',
+  'e. Tidak masuk Daftar Hitam dan tidak pernah wanprestasi;<br>',
+  'f. Memiliki status valid Keterangan Wajib Pajak;<br>',
+  'g. Memiliki pengalaman pekerjaan sejenis, kecuali pelaku usaha yang baru berdiri kurang dari 3 (tiga) tahun.</td></tr>',
+  '<tr><td style="vertical-align:top;">12. METODE PENGADAAN</td><td style="vertical-align:top;">:</td><td>{{METODE_PENGADAAN}}</td></tr>',
+  '<tr><td style="vertical-align:top;">13. SPESIFIKASI TEKNIS</td><td style="vertical-align:top;">:</td><td>Terlampir (lihat dokumen HPS)</td></tr>',
+  '</table><br><br>',
+  '<table style="width:100%;"><tr><td style="width:60%;"></td><td style="text-align:left;">',
+  'Indramayu, {{TANGGAL_CETAK}}<br>Pejabat Pembuat Komitmen,<br><br><br><br>',
+  '<b>{{PPK}}</b><br>NIP. {{NIP_PPK}}',
+  '</td></tr></table></div>'
+].join('\n');
+
 function initializeDatabase() {
   var ss = SpreadsheetApp.openById(getSpreadsheetId_());
 
@@ -67,6 +167,28 @@ function initializeDatabase() {
         jenis_pengadaan_id: nextId_('JP'), nama_jenis: jp.nama, kode: jp.kode,
         deskripsi: '', status: 'AKTIF', created_at: now, updated_at: now
       });
+    });
+  }
+
+  // Seed MASTER_DOCUMENT_REQUIREMENTS (Tahap 5) kalau sheet-nya masih kosong.
+  // Aman dijalankan ulang: tidak akan menduplikasi kalau sudah pernah diisi.
+  var existingReqs = readAllRows_('MASTER_DOCUMENT_REQUIREMENTS').rows;
+  if (existingReqs.length === 0) {
+    SEED_DOCUMENT_REQUIREMENTS.forEach(function (r) {
+      appendRow_('MASTER_DOCUMENT_REQUIREMENTS', {
+        document_requirement_id: nextId_('DR'), jenis_pengadaan_id: '',
+        nama_dokumen: r.nama, kode_dokumen: r.kode, wajib: r.wajib,
+        kondisi: r.kondisi || '', multiple_file: r.multiple, urutan: r.urutan, status: 'AKTIF'
+      });
+    });
+  }
+
+  // Seed template KAK default (Tahap 6) kalau belum ada template KAK sama sekali.
+  var existingTemplates = readAllRows_('TEMPLATES').rows.filter(function (t) { return t.doc_type === 'KAK'; });
+  if (existingTemplates.length === 0) {
+    appendRow_('TEMPLATES', {
+      template_id: nextId_('TPL'), jenis_pengadaan_id: '', doc_type: 'KAK',
+      nama_template: 'Template KAK Umum', html_template: SEED_TEMPLATE_KAK, status: 'AKTIF'
     });
   }
 
@@ -134,4 +256,78 @@ function setupSystem() {
   initializeDatabase();
   initializeDriveStructure();
   Logger.log('setupSystem() selesai. Langkah selanjutnya: jalankan createFirstAdmin(nama, username, password) secara manual.');
+}
+
+/**
+ * TAHAP 9 (security hardening).
+ * Membersihkan baris SESSIONS yang sudah EXPIRED/REVOKED atau lewat masa
+ * berlaku. Ini menutup utang teknis yang dicatat sejak Tahap 1 (komentar di
+ * Auth.gs): tanpa ini, sheet SESSIONS tumbuh terus dan validateSession_ --
+ * yang memindai seluruh sheet tiap request -- makin lama makin lambat.
+ *
+ * Pasang sebagai trigger harian: di editor Apps Script -> ikon jam (Triggers)
+ * -> Add Trigger -> pilih fungsi ini -> Time-driven -> Day timer.
+ * Aman dijalankan manual kapan saja; sesi yang masih aktif tidak tersentuh.
+ */
+function cleanupExpiredSessions() {
+  var sheet = getSheet_('SESSIONS');
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) {
+    Logger.log('cleanupExpiredSessions(): tidak ada sesi untuk dibersihkan.');
+    return;
+  }
+  var headers = values[0];
+  var kolomStatus = headers.indexOf('status');
+  var kolomExpires = headers.indexOf('expires_at');
+  var sekarang = new Date();
+  var dihapus = 0;
+
+  // Dari bawah ke atas supaya nomor baris di atasnya tidak bergeser.
+  for (var r = values.length - 1; r >= 1; r--) {
+    var status = values[r][kolomStatus];
+    var expiresAt = values[r][kolomExpires];
+    var sudahLewat = expiresAt && new Date(expiresAt) < sekarang;
+    if (status === 'EXPIRED' || status === 'REVOKED' || sudahLewat) {
+      sheet.deleteRow(r + 1);
+      dihapus++;
+    }
+  }
+  Logger.log('cleanupExpiredSessions(): ' + dihapus + ' baris sesi lama dihapus.');
+}
+
+/**
+ * TAHAP 9. Pemeriksaan mandiri konfigurasi keamanan -- dijalankan manual dari
+ * editor, hasilnya dibaca di Execution log. Sengaja hanya MELAPORKAN, tidak
+ * memperbaiki sendiri, supaya tidak ada perubahan diam-diam pada sistem yang
+ * sudah berjalan.
+ */
+function securityHealthCheck() {
+  var laporan = [];
+
+  if (!SCRIPT_PROPS.getProperty('SPREADSHEET_ID')) laporan.push('KRITIS: SPREADSHEET_ID belum diset di Script Properties.');
+  if (!SCRIPT_PROPS.getProperty('ROOT_DRIVE_FOLDER_ID')) laporan.push('KRITIS: ROOT_DRIVE_FOLDER_ID belum diset di Script Properties.');
+
+  var users = readAllRows_('USERS').rows;
+  var adminAktif = users.filter(function (u) { return u.role === 'ADMIN' && u.status === 'AKTIF'; });
+  if (adminAktif.length === 0) laporan.push('KRITIS: tidak ada satu pun akun ADMIN yang aktif.');
+  if (adminAktif.length > 3) laporan.push('PERHATIAN: ada ' + adminAktif.length + ' akun ADMIN aktif. Prinsip least privilege: batasi seperlunya.');
+
+  users.forEach(function (u) {
+    if (!u.password_hash || !u.password_salt) laporan.push('KRITIS: user ' + u.username + ' tidak punya password hash/salt yang benar.');
+    if (u.status === 'AKTIF' && !u.last_login) laporan.push('PERHATIAN: user ' + u.username + ' aktif tapi belum pernah login.');
+  });
+
+  var sesiAktif = readAllRows_('SESSIONS').rows.filter(function (s) { return s.status === 'ACTIVE'; });
+  var totalSesi = readAllRows_('SESSIONS').rows.length;
+  if (totalSesi > 200) laporan.push('PERHATIAN: sheet SESSIONS berisi ' + totalSesi + ' baris (' + sesiAktif.length + ' aktif). Jalankan cleanupExpiredSessions() atau pasang trigger hariannya.');
+
+  var auditCount = readAllRows_('AUDIT_LOGS').rows.length;
+  if (auditCount > 20000) laporan.push('PERHATIAN: AUDIT_LOGS berisi ' + auditCount + ' baris. Pertimbangkan arsip ke Spreadsheet terpisah (lihat Bagian O: batas 10 juta sel per file).');
+
+  if (laporan.length === 0) {
+    Logger.log('securityHealthCheck(): tidak ditemukan masalah.');
+  } else {
+    Logger.log('securityHealthCheck(): ' + laporan.length + ' temuan:\n- ' + laporan.join('\n- '));
+  }
+  return laporan;
 }

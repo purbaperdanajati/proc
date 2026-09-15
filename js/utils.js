@@ -47,3 +47,24 @@
     if (token) sessionStorage.setItem('sessionToken', token);
     else sessionStorage.removeItem('sessionToken');
   }
+
+  /**
+   * Menandai tombol submit sedang bekerja: nonaktifkan, ganti teks, dan
+   * tampilkan spinner kecil (lewat class CSS .btn-busy di css/main.css) --
+   * dipakai di SEMUA form submit di aplikasi ini supaya user tahu aksinya
+   * sedang diproses, bukan diam tanpa respons. Mengembalikan fungsi untuk
+   * memulihkan tombol ke kondisi semula (dipanggil setelah sukses/gagal,
+   * kecuali kalau tampilannya sudah keburu diganti render ulang).
+   */
+  function setButtonBusy(button, busyText) {
+    var originalText = button.textContent;
+    var originalDisabled = button.disabled;
+    button.disabled = true;
+    button.classList.add('btn-busy');
+    button.textContent = busyText || 'Memproses...';
+    return function restoreButton() {
+      button.disabled = originalDisabled;
+      button.classList.remove('btn-busy');
+      button.textContent = originalText;
+    };
+  }

@@ -60,3 +60,33 @@ async function callApi(module, action, payload) {
   appWarn(actionPath + ': server menjawab gagal ->', res);
   throw res || { errorCode: 'UNKNOWN', message: 'Terjadi kesalahan tidak diketahui.' };
 }
+
+/**
+ * Cache data sederhana di memori (hilang saat halaman di-reload penuh, tapi
+ * BERTAHAN selama pindah-pindah menu dalam satu sesi) -- inilah yang membuat
+ * navigasi antar menu tidak selalu memanggil server ulang. Tiap halaman tetap
+ * punya tombol "Perbarui Data" (lihat app.js: refreshButtonHtml()) yang
+ * memanggil ulang dengan forceRefresh=true untuk melewati cache.
+ */
+var dataCache = {};
+
+function callApiCached(cacheKey, module, action, payload, forceRefresh) {
+  if (!forceRefresh && dataCache.hasOwnProperty(cacheKey)) {
+    appLog('cache: pakai data tersimpan untuk ->', cacheKey);
+    return Promise.resolve(dataCache[cacheKey]);
+  }
+  return callApi(module, action, payload).then(function (data) {
+    dataCache[cacheKey] = data;
+    return data;
+  });
+}
+
+// Dipanggil setelah operasi tulis (create/update/cancel) supaya menu lain
+// yang datanya ikut berubah tidak menampilkan data basi dari cache. Lebih
+// aman membersihkan semuanya sekaligus daripada melacak dependensi
+// antar-cache satu-satu (mis. paket baru mengubah pagu terpakai DAN status
+// satker DAN dashboard sekaligus).
+function clearAllCache() {
+  dataCache = {};
+  appLog('cache: dibersihkan seluruhnya setelah ada perubahan data.');
+}

@@ -10,7 +10,7 @@
  * membuat deployment BARU dari awal (bukan versi baru dari deployment yang sama).
  * Jadi setelah diisi sekali, umumnya tidak perlu diubah lagi untuk update rutin.
  */
-const API_URL = 'https://script.google.com/macros/s/AKfycbzIzZ7f3zjF8G6JiIHyikVHwYfZ1Ml-_QUWJ89xuTXlJtsNHEA3JH8K9c3pngE-E7YkWA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxNA_fiQgZjFovdHeh7FyYAPLneYQTd7CN5dAT9qirvSLqlMKy9AO7HS_FKQJYL-V56IQ/exec';
 
 /**
  * Nyalakan/matikan log aplikasi di console browser (F12 -> tab Console) dari
