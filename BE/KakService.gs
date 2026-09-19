@@ -42,18 +42,22 @@ var KakService = {
    * Finalize KAK & HPS" -- Viewer tidak boleh, meski satkernya sendiri).
    */
   preview: function (payload, token) {
-    var paket = getPaketForDocGen_(String((payload || {}).paketId || ''), token, true);
-    return { html: buildKakHtml_(paket), perluRegenerasi: hitungKadaluarsaKak_(paket) };
+    payload = payload || {};
+    var paket = getPaketForDocGen_(String(payload.paketId || ''), token, true);
+    var kadaluarsa = hitungKadaluarsaKak_(paket);
+    var nomorSurat = payload.nomorSurat !== undefined ? String(payload.nomorSurat || '') : nomorSuratTerakhir_(paket.paket_id, 'KAK');
+    return { html: buildKakHtml_(paket, nomorSurat), perluRegenerasi: kadaluarsa, nomorSurat: nomorSurat };
   },
 
   finalize: function (payload, token) {
     payload = payload || {};
     var paket = getPaketForDocGen_(String(payload.paketId || ''), token, true);
     var access = requireAccess_(token, { allowRoles: ['ADMIN', 'PENGELOLA'], satkerId: paket.satker_id, tahunAnggaranId: paket.tahun_anggaran_id });
+    var nomorSurat = String(payload.nomorSurat || '');
 
     // htmlFinal dari klien = hasil sunting ringan contenteditable di layar
     // (Bagian H poin 3) -- kalau tidak dikirim, generate ulang dari template.
-    var html = payload.htmlFinal ? String(payload.htmlFinal) : buildKakHtml_(paket);
+    var html = payload.htmlFinal ? String(payload.htmlFinal) : buildKakHtml_(paket, nomorSurat);
     var pdfBlob;
     try {
       pdfBlob = Utilities.newBlob(html, MimeType.HTML, 'KAK.html').getAs(MimeType.PDF);
@@ -67,10 +71,10 @@ var KakService = {
     pdfBlob.setName(namaFile);
 
     var file = getPaketDocumentFolder_(paket, 'KAK').createFile(pdfBlob);
-    var data = buildDocumentData_(paket);
+    var data = buildDocumentData_(paket, nomorSurat);
     var id = nextId_('GEN');
     appendRow_('GENERATED_DOCUMENTS', {
-      generated_document_id: id, paket_id: paket.paket_id, doc_type: 'KAK', version: versionBaru,
+      generated_document_id: id, paket_id: paket.paket_id, doc_type: 'KAK', version: versionBaru, nomor_surat: nomorSurat,
       generated_by: access.session.userId, generated_at: new Date().toISOString(),
       file_id: file.getId(), drive_url: file.getUrl(),
       snapshot_json: JSON.stringify(data), change_note: payload.changeNote || '', status: 'ACTIVE'
@@ -109,12 +113,32 @@ var KakService = {
   }
 };
 
-function buildKakHtml_(paket) {
+function buildKakHtml_(paket, nomorSurat) {
   var template = findApplicableTemplate_(paket.jenis_pengadaan_id, 'KAK');
   if (!template) {
     throw AppError_('NOT_FOUND', 'Template KAK belum tersedia untuk jenis pengadaan ini. Hubungi admin untuk membuat/mengaktifkan template (menu Templates), atau jalankan initializeDatabase() ulang untuk mengisi template umum default.');
   }
-  return renderTemplate_(template.html_template, buildDocumentData_(paket));
+  var data = buildDocumentData_(paket, nomorSurat);
+  var html = renderTemplate_(template.html_template, data);
+  // BUG FIX (kop surat KAK hilang): kalau template yang dipakai belum punya
+  // placeholder {{KOP_SURAT}} (mis. template lama yang sudah kadung disimpan
+  // admin SEBELUM perbaikan ini), letterhead-nya ditempel otomatis di paling
+  // atas -- supaya kop surat Kemenag + Satker tetap tampil apa pun isi
+  // template-nya, bukan bergantung admin mengedit ulang template secara manual.
+  if (html.indexOf(data.KOP_SURAT) === -1) {
+    html = data.KOP_SURAT + html;
+  }
+  return html;
+}
+
+// Nomor surat KAK versi terakhir yang di-finalize -- dipakai sebagai nilai awal
+// kolom "Nomor Surat" saat preview dibuka lagi (bukan blokir, cuma kemudahan;
+// user tetap bisa mengubahnya sebelum finalize ulang).
+function nomorSuratTerakhir_(paketId, docType) {
+  var docs = readAllRows_('GENERATED_DOCUMENTS').rows
+    .filter(function (g) { return g.paket_id === paketId && g.doc_type === docType && g.status === 'ACTIVE'; })
+    .sort(function (a, b) { return Number(b.version) - Number(a.version); });
+  return docs.length > 0 ? String(docs[0].nomor_surat || '') : '';
 }
 
 /**
@@ -177,7 +201,7 @@ function getPaketForDocGen_(paketId, token, requireWrite) {
  * ppk_nama/pp_nama/kpa_nama di PAKET (snapshot saat paket dibuat) diprioritaskan
  * dari SATKER_TAHUN (data terkini) -- ini sekaligus dasar deteksi kadaluarsa.
  */
-function buildDocumentData_(paket) {
+function buildDocumentData_(paket, nomorSurat) {
   var satker = findRowByField_('SATKER', 'satker_id', paket.satker_id) || {};
   var year = findRowByField_('YEARS', 'tahun_anggaran_id', paket.tahun_anggaran_id) || {};
   var jenis = findRowByField_('JENIS_PENGADAAN', 'jenis_pengadaan_id', paket.jenis_pengadaan_id) || {};
@@ -198,6 +222,12 @@ function buildDocumentData_(paket) {
   return {
     NAMA_SATKER: satker.nama_satker || '',
     ALAMAT_SATKER: satker.alamat || '',
+    WEBSITE_SATKER: satker.website || '',
+    EMAIL_SATKER: satker.email || '',
+    TELEPON_SATKER: satker.telepon || '',
+    KODEPOS_SATKER: satker.kodepos || '',
+    KOP_SURAT: buildKopSurat_(satker),
+    NOMOR_SURAT: nomorSurat || '',
     NAMA_PAKET: paket.nama_paket || '',
     JENIS_PENGADAAN: jenis.nama_jenis || '',
     TAHUN_ANGGARAN: year.tahun ? String(year.tahun) : '',
@@ -296,6 +326,29 @@ function linkGeneratedDocToChecklist_(paket, docType, file, userId) {
 // Selalu escape nilai yang berasal dari data (Sheet/user) sebelum disisipkan ke
 // HTML template -- padanan server dari escapeHtml() di js/utils.js (frontend),
 // sesuai Bagian H poin 2 & Risiko Keamanan #5 dokumen desain.
+// ===================== KOP SURAT (letterhead) =====================
+// Dipakai lewat placeholder {{KOP_SURAT}} di template, ATAU ditempel otomatis
+// di buildKakHtml_ kalau template belum memuat placeholder itu (lihat komentar
+// di buildKakHtml_). Kontak (website/email/telepon/kodepos) baru tampil kalau
+// diisi di data Satker -- baris kontak dilewati sepenuhnya kalau semuanya kosong.
+function buildKopSurat_(satker) {
+  var kontak = [];
+  if (satker.telepon) kontak.push('Telp. ' + escapeHtmlServer_(satker.telepon));
+  if (satker.email) kontak.push('Email: ' + escapeHtmlServer_(satker.email));
+  if (satker.website) kontak.push('Website: ' + escapeHtmlServer_(satker.website));
+  var alamatLengkap = (satker.alamat || '') + (satker.kodepos ? ' ' + satker.kodepos : '');
+
+  return [
+    '<div style="text-align:center;border-bottom:3px double #000;padding-bottom:8px;margin-bottom:14px;">',
+    '<div style="font-weight:bold;font-size:13pt;">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>',
+    '<div style="font-weight:bold;font-size:12pt;">KANTOR KEMENTERIAN AGAMA KABUPATEN INDRAMAYU</div>',
+    '<div style="font-weight:bold;font-size:12pt;">' + escapeHtmlServer_((satker.nama_satker || '').toUpperCase()) + '</div>',
+    (alamatLengkap.trim() ? '<div style="font-size:9pt;">' + escapeHtmlServer_(alamatLengkap.trim()) + '</div>' : ''),
+    (kontak.length > 0 ? '<div style="font-size:9pt;">' + kontak.join(' &bull; ') + '</div>' : ''),
+    '</div>'
+  ].join('\n');
+}
+
 function escapeHtmlServer_(str) {
   if (str === null || str === undefined) return '';
   return String(str)

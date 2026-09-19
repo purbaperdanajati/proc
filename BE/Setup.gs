@@ -11,7 +11,7 @@
 var SHEET_DEFINITIONS = {
   CONFIG: ['key', 'value', 'description', 'updated_at', 'updated_by'],
   YEARS: ['tahun_anggaran_id', 'tahun', 'status', 'tanggal_mulai', 'tanggal_selesai', 'catatan', 'created_at', 'created_by'],
-  SATKER: ['satker_id', 'kode_satker', 'nama_satker', 'jenis_satker', 'wilayah', 'alamat', 'status', 'catatan', 'created_at', 'updated_at', 'created_by', 'updated_by'],
+  SATKER: ['satker_id', 'kode_satker', 'nama_satker', 'jenis_satker', 'wilayah', 'alamat', 'website', 'email', 'telepon', 'kodepos', 'status', 'catatan', 'created_at', 'updated_at', 'created_by', 'updated_by'],
   SATKER_TAHUN: ['satker_tahun_id', 'satker_id', 'tahun_anggaran_id', 'sp_dipa', 'tanggal_dipa', 'kpa_nama', 'kpa_nip', 'ppk_nama', 'ppk_nip', 'pejabat_pengadaan_nama', 'pejabat_pengadaan_nip', 'ada_pengadaan', 'status', 'catatan', 'created_at', 'updated_at'],
   USERS: ['user_id', 'nama', 'nip', 'email', 'username', 'password_hash', 'password_salt', 'password_iterations', 'role', 'status', 'last_login', 'failed_login_count', 'locked_until', 'created_at', 'updated_at'],
   USER_ASSIGNMENTS: ['assignment_id', 'tahun_anggaran_id', 'user_id', 'satker_id', 'tanggal_mulai', 'tanggal_selesai', 'status', 'created_at', 'created_by'],
@@ -20,10 +20,11 @@ var SHEET_DEFINITIONS = {
   PAKET: ['paket_id', 'tahun_anggaran_id', 'satker_id', 'jenis_pengadaan_id', 'pagu_id', 'kode_paket', 'nama_paket', 'sumber_dana', 'pagu_snapshot', 'nilai_hps', 'nilai_kontrak', 'metode_pengadaan', 'jenis_kontrak', 'tanggal_mulai', 'tanggal_selesai', 'penyedia_id', 'ppk_nama', 'ppk_nip', 'pp_nama', 'pp_nip', 'kpa_nama', 'kpa_nip', 'ada_pph', 'memerlukan_penyedia', 'status_paket', 'persentase_kelengkapan', 'drive_folder_id', 'created_at', 'updated_at', 'created_by', 'updated_by'],
   PROVIDERS: ['penyedia_id', 'nama_perusahaan', 'bentuk_usaha', 'npwp', 'nib', 'alamat', 'email', 'telepon', 'nama_direktur', 'nama_pic', 'nomor_pic', 'rekening', 'bank', 'status', 'catatan', 'company_profile_file_id', 'company_profile_version', 'created_at', 'updated_at'],
   MASTER_DOCUMENT_REQUIREMENTS: ['document_requirement_id', 'jenis_pengadaan_id', 'nama_dokumen', 'kode_dokumen', 'wajib', 'kondisi', 'multiple_file', 'urutan', 'status'],
-  DOCUMENTS: ['document_id', 'paket_id', 'document_requirement_id', 'file_name', 'drive_file_id', 'drive_url', 'mime_type', 'file_size', 'uploaded_by', 'uploaded_at', 'version', 'previous_version_document_id', 'status'],
+  DOCUMENTS: ['document_id', 'paket_id', 'document_requirement_id', 'file_name', 'drive_file_id', 'drive_url', 'mime_type', 'file_size', 'nomor_surat', 'uploaded_by', 'uploaded_at', 'version', 'previous_version_document_id', 'status'],
   HPS_ITEMS: ['hps_item_id', 'paket_id', 'row_index', 'col_index', 'value', 'rowspan', 'colspan', 'no_urut', 'nama', 'spesifikasi', 'volume', 'satuan', 'harga_satuan', 'jumlah', 'created_at', 'updated_at'],
-  GENERATED_DOCUMENTS: ['generated_document_id', 'paket_id', 'doc_type', 'version', 'generated_by', 'generated_at', 'file_id', 'drive_url', 'snapshot_json', 'change_note', 'status'],
+  GENERATED_DOCUMENTS: ['generated_document_id', 'paket_id', 'doc_type', 'version', 'nomor_surat', 'generated_by', 'generated_at', 'file_id', 'drive_url', 'snapshot_json', 'change_note', 'status'],
   TEMPLATES: ['template_id', 'jenis_pengadaan_id', 'doc_type', 'nama_template', 'html_template', 'status'],
+  PEJABAT: ['pejabat_id', 'nama', 'nip', 'jabatan', 'status', 'created_at', 'updated_at', 'created_by'],
   AUDIT_LOGS: ['audit_id', 'timestamp', 'user_id', 'action', 'module', 'record_id', 'description', 'ip_address', 'user_agent'],
   SESSIONS: ['session_id', 'user_id', 'token_hash', 'created_at', 'expires_at', 'last_activity', 'status'],
   NOTIFICATIONS: ['notification_id', 'tahun_anggaran_id', 'satker_id', 'paket_id', 'user_id', 'type', 'message', 'is_read', 'created_at'],
@@ -80,8 +81,10 @@ var SEED_DOCUMENT_REQUIREMENTS = [
  */
 var SEED_TEMPLATE_KAK = [
   '<div style="font-family:Arial,sans-serif;font-size:11pt;">',
+  '{{KOP_SURAT}}',
   '<div style="text-align:center;font-weight:bold;">',
   'KERANGKA ACUAN KERJA (KAK)/SPESIFIKASI TEKNIS<br>',
+  'Nomor: {{NOMOR_SURAT}}<br>',
   '{{NAMA_PAKET}}<br>KABUPATEN INDRAMAYU',
   '</div><br>',
   '<table style="width:100%;border-collapse:collapse;" cellpadding="4">',

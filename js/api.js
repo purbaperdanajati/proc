@@ -46,10 +46,17 @@ async function callApi(module, action, payload) {
   }
 
   var res;
+  var mentahUntukDebug = '';
   try {
-    res = await response.json();
+    // Baca sebagai teks dulu (bukan langsung response.json()) supaya kalau
+    // parse-nya gagal, potongan respons mentahnya masih bisa dicatat ke console
+    // untuk membantu diagnosis (mis. Apps Script kadang mengembalikan halaman
+    // HTML -- bukan JSON -- saat cold start/quota/izin bermasalah).
+    mentahUntukDebug = await response.text();
+    res = JSON.parse(mentahUntukDebug);
   } catch (parseErr) {
-    appError(actionPath + ': respons server bukan JSON valid ->', parseErr, response.status);
+    appError(actionPath + ': respons server bukan JSON valid (status ' + response.status + ') ->', parseErr,
+      'potongan respons:', mentahUntukDebug.slice(0, 300));
     throw { errorCode: 'BAD_RESPONSE', message: 'Respons server tidak dapat dibaca (bukan JSON valid).' };
   }
 

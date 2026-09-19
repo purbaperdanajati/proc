@@ -16,6 +16,7 @@ var DocumentsService = {
       case 'getChecklist': return this.getChecklist(payload, token);
       case 'list': return this.list(payload, token);
       case 'upload': return this.upload(payload, token);
+      case 'setNomorSurat': return this.setNomorSurat(payload, token);
       case 'delete': return this.deleteDoc(payload, token);
       case 'download': return this.download(payload, token);
       default: throw AppError_('UNKNOWN_ACTION', 'Aksi documents tidak dikenal: ' + action);
@@ -85,10 +86,16 @@ var DocumentsService = {
     var id = nextId_('DOC');
     var now = new Date().toISOString();
     var newVersion = previousDoc ? (Number(previousDoc.version) || 1) + 1 : 1;
+    // Nomor surat diisi manual oleh user (Bagian bug fix: dokumen fisik seperti
+    // SK PPK/SK PP/BAST Manual/Dokumentasi Monev punya nomor surat dari satker
+    // yang tidak bisa ditebak sistem) -- kalau tidak diisi saat mengganti versi,
+    // bawa nomor surat versi sebelumnya supaya tidak hilang tanpa sengaja.
+    var nomorSurat = payload.nomorSurat !== undefined ? String(payload.nomorSurat || '') :
+      (previousDoc ? (previousDoc.nomor_surat || '') : '');
     appendRow_('DOCUMENTS', {
       document_id: id, paket_id: paketId, document_requirement_id: requirementId,
       file_name: payload.fileName || newFile.getName(), drive_file_id: newFile.getId(), drive_url: newFile.getUrl(),
-      mime_type: payload.mimeType, file_size: blob.getBytes().length,
+      mime_type: payload.mimeType, file_size: blob.getBytes().length, nomor_surat: nomorSurat,
       uploaded_by: access.session.userId, uploaded_at: now, version: newVersion,
       previous_version_document_id: previousDoc ? previousDoc.document_id : '', status: 'ACTIVE'
     });
@@ -98,6 +105,22 @@ var DocumentsService = {
 
     computePaketCompletion_(paketId);
     return { documentId: id, version: newVersion };
+  },
+
+  // Ubah nomor surat dokumen yang SUDAH terunggah tanpa perlu unggah ulang filenya.
+  setNomorSurat: function (payload, token) {
+    payload = payload || {};
+    var documentId = String(payload.documentId || '');
+    if (!documentId) throw AppError_('BAD_REQUEST', 'documentId wajib diisi.');
+    var doc = findRowByField_('DOCUMENTS', 'document_id', documentId);
+    if (!doc) throw AppError_('NOT_FOUND', 'Dokumen tidak ditemukan.');
+    var paket = findRowByField_('PAKET', 'paket_id', doc.paket_id);
+    if (!paket) throw AppError_('NOT_FOUND', 'Paket untuk dokumen ini tidak ditemukan.');
+    var access = requireAccess_(token, { allowRoles: ['ADMIN', 'PENGELOLA'], satkerId: paket.satker_id, tahunAnggaranId: paket.tahun_anggaran_id });
+
+    updateRowByField_('DOCUMENTS', 'document_id', documentId, { nomor_surat: String(payload.nomorSurat || '') });
+    logAudit_(access.session.userId, 'SET_NOMOR_SURAT', 'DOCUMENTS', documentId, 'Ubah nomor surat dokumen');
+    return {};
   },
 
   // Soft-delete: file TIDAK dihapus dari Drive, hanya diarsipkan + ditandai DELETED.

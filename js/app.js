@@ -50,6 +50,39 @@ function attachSatkerLinkHandlers(content) {
   });
 }
 
+// BARU: dropdown "Pilih dari daftar pejabat" -- ditempatkan lewat markup
+// pejabatPickerHtml(namaFieldId, nipFieldId) di form manapun yang punya field
+// nama+NIP KPA/PPK/Pejabat Pengadaan (SATKER_TAHUN & Edit Paket), lalu
+// attachPejabatPickers(content) memuat daftar PEJABAT AKTIF sekali dan mengisi
+// otomatis field nama+NIP saat salah satu dipilih -- user tidak perlu ketik
+// ulang orang yang sama berkali-kali. Field nama/NIP tetap bisa diedit manual
+// sesudahnya (dropdown cuma kemudahan pengisian awal, bukan referensi terkunci).
+function pejabatPickerHtml(namaFieldId, nipFieldId) {
+  return '<select class="pejabat-picker" data-target-nama="' + namaFieldId + '" data-target-nip="' + nipFieldId + '" style="width:100%;margin-bottom:4px;">' +
+    '<option value="">-- pilih dari daftar pejabat (opsional) --</option></select>';
+}
+function attachPejabatPickers(content) {
+  var pickers = content.querySelectorAll('.pejabat-picker');
+  if (pickers.length === 0) return;
+  callApiCached('pejabat', 'pejabat', 'list', { status: 'AKTIF' }, false).then(function (list) {
+    var options = '<option value="">-- pilih dari daftar pejabat (opsional) --</option>' +
+      list.map(function (p) {
+        return '<option value="' + escapeHtml(p.pejabat_id) + '" data-nama="' + escapeHtml(p.nama) + '" data-nip="' + escapeHtml(p.nip || '') + '">' +
+          escapeHtml(p.nama) + (p.jabatan ? ' (' + escapeHtml(p.jabatan) + ')' : '') + '</option>';
+      }).join('');
+    pickers.forEach(function (sel) {
+      sel.innerHTML = options;
+      sel.addEventListener('change', function () {
+        var opt = sel.options[sel.selectedIndex];
+        var namaEl = document.getElementById(sel.getAttribute('data-target-nama'));
+        var nipEl = document.getElementById(sel.getAttribute('data-target-nip'));
+        if (namaEl) { namaEl.value = opt.getAttribute('data-nama') || ''; namaEl.dispatchEvent(new Event('input')); }
+        if (nipEl) { nipEl.value = opt.getAttribute('data-nip') || ''; nipEl.dispatchEvent(new Event('input')); }
+      });
+    });
+  }).catch(function (err) { appWarn('attachPejabatPickers: gagal memuat daftar pejabat ->', err); });
+}
+
 // BARU (Tahap 3): tombol "Perbarui Data" dipasang di semua halaman -- klik
 // untuk memaksa ambil data terbaru dari server, lewati cache.
 function refreshButtonHtml() {
@@ -169,6 +202,30 @@ function startApp(user) {
   window.addEventListener('hashchange', renderRoute);
   setupGlobalSearch();
   renderRoute();
+  prefetchCommonData();
+}
+
+// BARU: ambil data menu-menu yang paling sering dibuka SEKALI di depan (segera
+// setelah login/refresh), supaya berpindah tab menu berikutnya tidak perlu
+// nunggu get data lagi -- data yang sudah di-cache langsung dipakai. "Perbarui
+// Data" di tiap halaman tetap tersedia untuk memaksa ambil ulang dari server.
+// Dijalankan setelah renderRoute() supaya menu yang sedang dibuka user tidak
+// harus antre di belakang prefetch ini.
+function prefetchCommonData() {
+  ensureYearsLoaded(false).then(function (yearInfo) {
+    var y = yearInfo.selectedId;
+    if (!y) return;
+    var action = currentUser.role === 'ADMIN' ? 'getGlobal' : 'getMine';
+    callApiCached('dashboard:' + action + ':' + y, 'dashboard', action, { tahunAnggaranId: y }, false);
+    callApiCached('satkers:' + y, 'satkers', 'list', { tahunAnggaranId: y }, false);
+    callApiCached('satkers:none', 'satkers', 'list', {}, false);
+    callApiCached('jenisPengadaan', 'jenisPengadaan', 'list', {}, false);
+    callApiCached('providers', 'providers', 'list', {}, false);
+    callApiCached('pagu:' + y, 'pagu', 'list', { tahunAnggaranId: y }, false);
+    callApiCached('paket:' + y, 'paket', 'list', { tahunAnggaranId: y }, false);
+  }).catch(function (err) {
+    appWarn('prefetchCommonData: gagal (tidak fatal -- tiap menu tetap fetch sendiri kalau belum ke-cache):', err);
+  });
 }
 
 function renderRoute() {
@@ -182,6 +239,12 @@ function renderRoute() {
   });
 
   var content = document.getElementById('content-area');
+  // Setiap navigasi (klik menu, ganti hash) menaikkan "generasi" route ini.
+  // render*View menyimpan generasi saat itu di variabel __gen; kalau hasil
+  // fetch-nya baru selesai SETELAH user sudah pindah ke menu lain (generasi
+  // sudah naik lagi), penulisan ke content.innerHTML dibatalkan -- ini yang
+  // mencegah konten menu lama "menimpa" menu baru saat klik cepat berpindah menu.
+  content.dataset.gen = String((Number(content.dataset.gen) || 0) + 1);
   content.innerHTML = '<p>Memuat...</p>';
 
   switch (viewName) {
@@ -197,6 +260,7 @@ function renderRoute() {
       return renderPaketListView(content);
     case 'laporan': return renderLaporanView(content);
     case 'years': return renderYearsView(content);
+    case 'pejabat': return renderPejabatView(content);
     case 'assignments': return renderAssignmentsView(content);
     case 'users': return renderUsersView(content);
     case 'audit': return renderAuditView(content);
@@ -205,27 +269,39 @@ function renderRoute() {
   }
 }
 
-function renderError(content, err) {
+// BARU: retryFn opsional -- kalau diisi, tombol "Coba Lagi" ditampilkan supaya
+// error (termasuk "Respons server tidak dapat dibaca") tidak membuat user
+// mentok tanpa bisa berbuat apa-apa selain refresh browser penuh.
+function renderError(content, err, retryFn) {
   appError('renderError:', err);
-  content.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Terjadi kesalahan.') + '</p>';
+  content.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Terjadi kesalahan.') + '</p>' +
+    (retryFn ? '<button type="button" class="btn-secondary" id="btn-error-retry">&#8635; Coba Lagi</button>' : '');
+  var retryBtn = document.getElementById('btn-error-retry');
+  if (retryBtn) retryBtn.addEventListener('click', function () {
+    setButtonBusy(retryBtn, 'Memuat...');
+    retryFn();
+  });
 }
 
 // ===================== DASHBOARD =====================
 function renderDashboardView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     if (yearInfo.years.length === 0) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = '<h2>Dashboard</h2><p>Belum ada Tahun Anggaran. Buat dulu lewat menu <a href="#/years">Tahun Anggaran</a>.</p>';
       return;
     }
     var action = currentUser.role === 'ADMIN' ? 'getGlobal' : 'getMine';
     var cacheKey = 'dashboard:' + action + ':' + yearInfo.selectedId;
     callApiCached(cacheKey, 'dashboard', action, { tahunAnggaranId: yearInfo.selectedId }, forceRefresh).then(function (data) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = buildDashboardHtml(data, yearInfo);
       attachYearSelectorHandler(content, renderDashboardView);
       attachRefreshButtonHandler(content, renderDashboardView);
       attachSatkerLinkHandlers(content);
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderDashboardView(content, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderDashboardView(content, true); }); });
 }
 
 function buildDashboardHtml(data, yearInfo) {
@@ -269,6 +345,7 @@ function buildDashboardHtml(data, yearInfo) {
 
 // ===================== SATKER =====================
 function renderSatkerView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     var payload = yearInfo.selectedId ? { tahunAnggaranId: yearInfo.selectedId } : {};
     var cacheKey = 'satkers:' + (yearInfo.selectedId || 'none');
@@ -280,7 +357,7 @@ function renderSatkerView(content, forceRefresh) {
       if (currentUser.role === 'ADMIN') {
         html += '<form id="form-add-satker" class="inline-form">' +
           '<input id="input-kode" placeholder="Kode Satker" required>' +
-          '<input id="input-nama" placeholder="Nama Satker" required>' +
+          '<input id="input-nama" data-uppercase placeholder="Nama Satker" required>' +
           '<select id="input-jenis">' +
             '<option>MAN</option><option>MIN</option><option>MTsN</option>' +
             '<option>KUA</option><option>PENDIS</option><option>SEKJEN</option><option>LAINNYA</option>' +
@@ -307,6 +384,7 @@ function renderSatkerView(content, forceRefresh) {
       if (satkers.length === 0) {
         html += '<p>' + (currentUser.role === 'ADMIN' ? 'Belum ada satker. Tambahkan lewat form di atas.' : 'Belum ada satker yang menjadi tanggung jawab Anda.') + '</p>';
       }
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
 
       attachYearSelectorHandler(content, renderSatkerView);
@@ -328,12 +406,13 @@ function renderSatkerView(content, forceRefresh) {
           renderSatkerView(content, true);
         }).catch(function (err) { showToast(err.message, true); restore(); });
       });
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderSatkerView(content, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderSatkerView(content, true); }); });
 }
 
 // ===================== DETAIL SATKER =====================
 function renderSatkerDetailView(content, satkerId, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     var payload = { satkerId: satkerId };
     if (yearInfo.selectedId) payload.tahunAnggaranId = yearInfo.selectedId;
@@ -354,7 +433,10 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
         '<tr><th>Kode Satker</th><td>' + escapeHtml(s.kode_satker) + '</td></tr>' +
         '<tr><th>Jenis</th><td>' + escapeHtml(s.jenis_satker) + '</td></tr>' +
         '<tr><th>Wilayah</th><td>' + escapeHtml(s.wilayah || '-') + '</td></tr>' +
-        '<tr><th>Alamat</th><td>' + escapeHtml(s.alamat || '-') + '</td></tr>' +
+        '<tr><th>Alamat</th><td>' + escapeHtml(s.alamat || '-') + (s.kodepos ? ' ' + escapeHtml(s.kodepos) : '') + '</td></tr>' +
+        '<tr><th>Website</th><td>' + escapeHtml(s.website || '-') + '</td></tr>' +
+        '<tr><th>Email</th><td>' + escapeHtml(s.email || '-') + '</td></tr>' +
+        '<tr><th>Telepon</th><td>' + escapeHtml(s.telepon || '-') + '</td></tr>' +
         '<tr><th>SP DIPA</th><td>' + escapeHtml(st.sp_dipa || '-') + '</td></tr>' +
         '<tr><th>Tanggal DIPA</th><td>' + escapeHtml(st.tanggal_dipa || '-') + '</td></tr>' +
         '<tr><th>KPA</th><td>' + escapeHtml(st.kpa_nama || '-') + (st.kpa_nip ? ' (NIP. ' + escapeHtml(st.kpa_nip) + ')' : '') + '</td></tr>' +
@@ -363,17 +445,36 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
         '</tbody></table>' +
         '<p class="hint-text">Lihat rincian pagu &amp; paket satker ini lewat menu <a href="#/pagu">Pagu</a> dan <a href="#/paket">Paket</a>.</p>';
 
+      if (currentUser.role === 'ADMIN') {
+        // BARU: sebelumnya alamat/website/email/telepon/kodepos hanya bisa dilihat,
+        // tidak ada form untuk mengisinya -- padahal ini dipakai untuk kop surat
+        // KAK/HPS/SK/BAST/Monev. Ditambahkan di sini.
+        html += '<h3>Edit Profil Satker</h3>' +
+          '<form id="form-edit-satker" class="inline-form" style="max-width:420px;">' +
+          '<label>Nama Satker</label><br><input id="es-nama" data-uppercase value="' + escapeHtml(s.nama_satker) + '" style="width:100%;" required><br><br>' +
+          '<label>Wilayah</label><br><input id="es-wilayah" value="' + escapeHtml(s.wilayah || '') + '" style="width:100%;"><br><br>' +
+          '<label>Alamat</label><br><input id="es-alamat" value="' + escapeHtml(s.alamat || '') + '" style="width:100%;"><br><br>' +
+          '<label>Kode Pos</label><br><input id="es-kodepos" data-nip maxlength="5" inputmode="numeric" value="' + escapeHtml(s.kodepos || '') + '" style="width:100%;"><br><br>' +
+          '<label>Telepon</label><br><input id="es-telepon" placeholder="0234-..." value="' + escapeHtml(s.telepon || '') + '" style="width:100%;"><br><br>' +
+          '<label>Email</label><br><input type="email" id="es-email" value="' + escapeHtml(s.email || '') + '" style="width:100%;"><br><br>' +
+          '<label>Website</label><br><input id="es-website" value="' + escapeHtml(s.website || '') + '" style="width:100%;"><br><br>' +
+          '<button type="submit">Simpan Profil Satker</button></form>';
+      }
+
       if (currentUser.role === 'ADMIN' && yearInfo.selectedId) {
         html += '<h3>Konfigurasi Tahun Ini</h3>' +
           '<form id="form-satker-tahun" class="inline-form" style="max-width:420px;">' +
           '<label>SP DIPA</label><br><input id="st-spdipa" value="' + escapeHtml(st.sp_dipa || '') + '" style="width:100%;"><br><br>' +
           '<label>Tanggal DIPA</label><br><input type="date" id="st-tgldipa" value="' + escapeHtml(st.tanggal_dipa || '') + '"><br><br>' +
-          '<label>KPA (Nama)</label><br><input id="st-kpanama" value="' + escapeHtml(st.kpa_nama || '') + '" style="width:100%;"><br>' +
-          '<label>KPA (NIP)</label><br><input id="st-kpanip" value="' + escapeHtml(st.kpa_nip || '') + '" style="width:100%;"><br><br>' +
-          '<label>PPK (Nama)</label><br><input id="st-ppknama" value="' + escapeHtml(st.ppk_nama || '') + '" style="width:100%;"><br>' +
-          '<label>PPK (NIP)</label><br><input id="st-ppknip" value="' + escapeHtml(st.ppk_nip || '') + '" style="width:100%;"><br><br>' +
-          '<label>Pejabat Pengadaan (Nama)</label><br><input id="st-ppnama" value="' + escapeHtml(st.pejabat_pengadaan_nama || '') + '" style="width:100%;"><br>' +
-          '<label>Pejabat Pengadaan (NIP)</label><br><input id="st-ppnip" value="' + escapeHtml(st.pejabat_pengadaan_nip || '') + '" style="width:100%;"><br><br>' +
+          pejabatPickerHtml('st-kpanama', 'st-kpanip') +
+          '<label>KPA (Nama)</label><br><input id="st-kpanama" data-uppercase value="' + escapeHtml(st.kpa_nama || '') + '" style="width:100%;"><br>' +
+          '<label>KPA (NIP)</label><br><input id="st-kpanip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(st.kpa_nip || '') + '" style="width:100%;"><br><br>' +
+          pejabatPickerHtml('st-ppknama', 'st-ppknip') +
+          '<label>PPK (Nama)</label><br><input id="st-ppknama" data-uppercase value="' + escapeHtml(st.ppk_nama || '') + '" style="width:100%;"><br>' +
+          '<label>PPK (NIP)</label><br><input id="st-ppknip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(st.ppk_nip || '') + '" style="width:100%;"><br><br>' +
+          pejabatPickerHtml('st-ppnama', 'st-ppnip') +
+          '<label>Pejabat Pengadaan (Nama)</label><br><input id="st-ppnama" data-uppercase value="' + escapeHtml(st.pejabat_pengadaan_nama || '') + '" style="width:100%;"><br>' +
+          '<label>Pejabat Pengadaan (NIP)</label><br><input id="st-ppnip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(st.pejabat_pengadaan_nip || '') + '" style="width:100%;"><br><br>' +
           '<label>Status Pengadaan Tahun Ini</label><br>' +
           '<select id="st-ada">' +
             '<option value="BELUM_DITENTUKAN"' + ((!st.ada_pengadaan || st.ada_pengadaan === 'BELUM_DITENTUKAN') ? ' selected' : '') + '>Belum Ditentukan</option>' +
@@ -385,9 +486,32 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
           '</form>';
       }
 
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
       attachYearSelectorHandler(content, function (c) { renderSatkerDetailView(c, satkerId); });
       attachRefreshButtonHandler(content, function (c) { renderSatkerDetailView(c, satkerId, true); });
+      attachPejabatPickers(content);
+
+      var formProfil = document.getElementById('form-edit-satker');
+      if (formProfil) formProfil.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var btn = formProfil.querySelector('button[type="submit"]');
+        var restore = setButtonBusy(btn, 'Menyimpan...');
+        callApi('satkers', 'update', {
+          satkerId: satkerId,
+          namaSatker: document.getElementById('es-nama').value,
+          wilayah: document.getElementById('es-wilayah').value,
+          alamat: document.getElementById('es-alamat').value,
+          kodepos: document.getElementById('es-kodepos').value,
+          telepon: document.getElementById('es-telepon').value,
+          email: document.getElementById('es-email').value,
+          website: document.getElementById('es-website').value
+        }).then(function () {
+          showToast('Profil satker disimpan.');
+          clearAllCache();
+          renderSatkerDetailView(content, satkerId, true);
+        }).catch(function (err) { showToast(err.message, true); restore(); });
+      });
 
       var form = document.getElementById('form-satker-tahun');
       if (form) form.addEventListener('submit', function (e) {
@@ -413,14 +537,16 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
           renderSatkerDetailView(content, satkerId, true);
         }).catch(function (err) { showToast(err.message, true); restore(); });
       });
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderSatkerDetailView(content, satkerId, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderSatkerDetailView(content, satkerId, true); }); });
 }
 
 // ===================== PAGU & JENIS PENGADAAN (Tahap 3) =====================
 function renderPaguView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     if (yearInfo.years.length === 0) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = '<h2>Pagu</h2><p>Belum ada Tahun Anggaran. Buat dulu lewat menu <a href="#/years">Tahun Anggaran</a>.</p>';
       return;
     }
@@ -439,7 +565,7 @@ function renderPaguView(content, forceRefresh) {
       if (currentUser.role === 'ADMIN') {
         html += '<form id="form-add-jenis" class="inline-form">' +
           '<input id="input-jp-kode" placeholder="Kode (mis. PERALATAN-MESIN)" required>' +
-          '<input id="input-jp-nama" placeholder="Nama Jenis Pengadaan" required>' +
+          '<input id="input-jp-nama" data-uppercase placeholder="Nama Jenis Pengadaan" required>' +
           '<button type="submit">Tambah</button></form>';
       }
       html += '<table class="data-table"><thead><tr><th>Kode</th><th>Nama</th><th>Status</th></tr></thead><tbody>';
@@ -455,7 +581,7 @@ function renderPaguView(content, forceRefresh) {
           '<select id="input-pg-jenis">' + jenisList.map(function (j) { return '<option value="' + escapeHtml(j.jenis_pengadaan_id) + '">' + escapeHtml(j.nama_jenis) + '</option>'; }).join('') + '</select><br>' +
           '<input id="input-pg-sumberdana" placeholder="Sumber Dana (mis. DIPA/BOS)"> ' +
           '<input id="input-pg-kodeanggaran" placeholder="Kode Anggaran"> ' +
-          '<input id="input-pg-nominal" type="number" min="0" placeholder="Nominal Pagu (Rp)" required> ' +
+          '<input id="input-pg-nominal" type="text" inputmode="numeric" data-rupiah placeholder="Nominal Pagu (Rp)" required> ' +
           '<button type="submit">Tambah Pagu</button></form>';
       }
       html += '<table class="data-table"><thead><tr><th>Satker</th><th>Jenis Pengadaan</th><th>Pagu</th><th>Terpakai</th><th>Sisa</th><th>Jml Paket</th></tr></thead><tbody>';
@@ -472,6 +598,7 @@ function renderPaguView(content, forceRefresh) {
       });
       html += '</tbody></table>';
 
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
       attachYearSelectorHandler(content, renderPaguView);
       attachRefreshButtonHandler(content, renderPaguView);
@@ -502,21 +629,23 @@ function renderPaguView(content, forceRefresh) {
           jenisPengadaanId: document.getElementById('input-pg-jenis').value,
           sumberDana: document.getElementById('input-pg-sumberdana').value,
           kodeAnggaran: document.getElementById('input-pg-kodeanggaran').value,
-          pagu: document.getElementById('input-pg-nominal').value
+          pagu: parseRupiahFieldValue('input-pg-nominal')
         }).then(function () {
           showToast('Pagu ditambahkan.');
           clearAllCache();
           renderPaguView(content, true);
         }).catch(function (err) { showToast(err.message, true); restore(); });
       });
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPaguView(content, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPaguView(content, true); }); });
 }
 
 // ===================== PAKET (Tahap 3) =====================
 function renderPaketListView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     if (yearInfo.years.length === 0) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = '<h2>Paket</h2><p>Belum ada Tahun Anggaran.</p>';
       return;
     }
@@ -538,13 +667,13 @@ function renderPaketListView(content, forceRefresh) {
           '<form id="form-add-paket" class="inline-form">' +
           '<select id="input-pkt-satker">' + satkerList.map(function (s) { return '<option value="' + escapeHtml(s.satker_id) + '">' + escapeHtml(s.nama_satker) + '</option>'; }).join('') + '</select> ' +
           '<select id="input-pkt-pagu"></select><br>' +
-          '<input id="input-pkt-nama" placeholder="Nama Paket" required style="min-width:260px;"><br>' +
+          '<input id="input-pkt-nama" data-uppercase placeholder="Nama Paket" required style="min-width:260px;"><br>' +
           '<select id="input-pkt-metode">' + METODE_PENGADAAN_OPTIONS.map(function (m) { return '<option>' + escapeHtml(m) + '</option>'; }).join('') + '</select> ' +
           '<input id="input-pkt-jeniskontrak" placeholder="Jenis Kontrak (mis. Harga Satuan)"><br>' +
           '<label>Mulai <input type="date" id="input-pkt-mulai"></label> ' +
           '<label>Selesai <input type="date" id="input-pkt-selesai"></label><br>' +
-          '<label>Nilai HPS <input type="number" min="0" id="input-pkt-hps"></label> ' +
-          '<label>Nilai Kontrak <input type="number" min="0" id="input-pkt-kontrak"></label><br>' +
+          '<label>Nilai HPS <input type="text" inputmode="numeric" data-rupiah id="input-pkt-hps"></label> ' +
+          '<label>Nilai Kontrak <input type="text" inputmode="numeric" data-rupiah id="input-pkt-kontrak"></label><br>' +
           '<label><input type="checkbox" id="input-pkt-pph"> Ada PPh</label> ' +
           '<label><input type="checkbox" id="input-pkt-penyedia" checked> Perlu Penyedia</label><br>' +
           '<label>Penyedia <select id="input-pkt-penyedia-pilih"><option value="">(belum dipilih)</option>' +
@@ -572,6 +701,7 @@ function renderPaketListView(content, forceRefresh) {
       });
       html += '</tbody></table>';
 
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
       attachYearSelectorHandler(content, renderPaketListView);
       attachRefreshButtonHandler(content, renderPaketListView);
@@ -618,8 +748,8 @@ function renderPaketListView(content, forceRefresh) {
           jenisKontrak: document.getElementById('input-pkt-jeniskontrak').value,
           tanggalMulai: document.getElementById('input-pkt-mulai').value,
           tanggalSelesai: document.getElementById('input-pkt-selesai').value,
-          nilaiHps: document.getElementById('input-pkt-hps').value,
-          nilaiKontrak: document.getElementById('input-pkt-kontrak').value,
+          nilaiHps: parseRupiahFieldValue('input-pkt-hps'),
+          nilaiKontrak: parseRupiahFieldValue('input-pkt-kontrak'),
           adaPph: document.getElementById('input-pkt-pph').checked,
           memerlukanPenyedia: document.getElementById('input-pkt-penyedia').checked,
           penyediaId: document.getElementById('input-pkt-penyedia-pilih').value
@@ -629,11 +759,12 @@ function renderPaketListView(content, forceRefresh) {
           renderPaketListView(content, true);
         }).catch(function (err) { showToast(err.message, true); restore(); });
       });
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPaketListView(content, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPaketListView(content, true); }); });
 }
 
 function renderPaketDetailView(content, paketId, forceRefresh) {
+  var __gen = content.dataset.gen;
   Promise.all([
     callApiCached('paketDetail:' + paketId, 'paket', 'detail', { paketId: paketId }, forceRefresh),
     callApiCached('satkers:none', 'satkers', 'list', {}, forceRefresh),
@@ -682,24 +813,36 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
       '<p>' + totalTerpenuhi + ' / ' + totalWajib + ' dokumen wajib lengkap' +
       (totalWajib > 0 ? ' (' + Math.round(totalTerpenuhi / totalWajib * 100) + '%)' : '') + '</p>' +
       '<table class="data-table"><thead><tr><th></th><th>Dokumen</th><th>File</th>' + (bisaEdit ? '<th>Unggah</th>' : '') + '</tr></thead><tbody>';
+    // Jenis dokumen yang punya nomor surat manual dari satker (bug fix #8) --
+    // KAK sudah punya field Nomor Surat sendiri di renderKakSection.
+    var DOC_KODE_PUNYA_NOMOR_SURAT = ['SK-PPK', 'SK-PP', 'BAST-MANUAL', 'DOK-MONEV'];
+
     checklist.forEach(function (item) {
       var icon = item.terpenuhi ? '<span class="badge badge-complete">&#10003;</span>' :
         (item.wajibSekarang ? '<span class="badge badge-belum">&#9675;</span>' : '<span class="badge badge-netral">-</span>');
       var namaBaris = escapeHtml(item.namaDokumen) + (item.wajib === 'KONDISIONAL' ? ' <span class="hint-text">(kondisional)</span>' : '');
+      var punyaNomorSurat = DOC_KODE_PUNYA_NOMOR_SURAT.indexOf(item.kodeDokumen) !== -1;
       var fileInfo;
       if (item.kodeDokumen === 'COMPANY-PROFILE') {
         fileInfo = item.terpenuhi ? '<span class="hint-text">Diambil dari data Penyedia</span>' : '<span class="hint-text">Penyedia belum punya company profile</span>';
       } else if (item.documents.length > 0) {
         fileInfo = item.documents.map(function (d) {
-          return '<a href="#" data-download-doc="' + escapeHtml(d.document_id) + '">' + escapeHtml(d.file_name) + '</a> (v' + escapeHtml(d.version) + ')' +
+          var baris = '<a href="#" data-download-doc="' + escapeHtml(d.document_id) + '">' + escapeHtml(d.file_name) + '</a> (v' + escapeHtml(d.version) + ')' +
             (bisaEdit ? ' <button type="button" class="btn-danger-text" data-delete-doc="' + escapeHtml(d.document_id) + '">Hapus</button>' : '');
+          if (punyaNomorSurat) {
+            baris += '<br><span class="hint-text">Nomor Surat: ' + escapeHtml(d.nomor_surat || '-') + '</span>' +
+              (bisaEdit ? ' <button type="button" class="btn-danger-text" data-edit-nomor-surat="' + escapeHtml(d.document_id) + '" data-current-nomor="' + escapeHtml(d.nomor_surat || '') + '">Ubah</button>' : '');
+          }
+          return baris;
         }).join('<br>');
       } else {
         fileInfo = '<span class="hint-text">Belum ada</span>';
       }
       var uploadCell = '';
       if (bisaEdit && item.kodeDokumen !== 'COMPANY-PROFILE') {
-        uploadCell = '<td><input type="file" class="doc-upload-input" data-requirement-id="' + escapeHtml(item.documentRequirementId) + '" style="max-width:160px;"></td>';
+        uploadCell = '<td><input type="file" class="doc-upload-input" data-requirement-id="' + escapeHtml(item.documentRequirementId) + '" style="max-width:160px;">' +
+          (punyaNomorSurat ? '<br><input type="text" class="doc-nomor-surat-input" data-requirement-id="' + escapeHtml(item.documentRequirementId) + '" placeholder="Nomor Surat" style="max-width:160px;margin-top:4px;">' : '') +
+          '</td>';
       } else if (bisaEdit) {
         uploadCell = '<td></td>';
       }
@@ -710,15 +853,25 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
     if (bisaEdit) {
       html += '<h3>Edit Data Paket</h3>' +
         '<form id="form-edit-paket" class="inline-form" style="max-width:480px;">' +
-        '<label>Nama Paket</label><br><input id="ep-nama" value="' + escapeHtml(p.nama_paket) + '" style="width:100%;" required><br><br>' +
+        '<label>Nama Paket</label><br><input id="ep-nama" data-uppercase value="' + escapeHtml(p.nama_paket) + '" style="width:100%;" required><br><br>' +
         '<label>Metode Pengadaan</label><br><select id="ep-metode">' +
         METODE_PENGADAAN_OPTIONS.map(function (m) { return '<option' + (m === p.metode_pengadaan ? ' selected' : '') + '>' + escapeHtml(m) + '</option>'; }).join('') +
         '</select><br><br>' +
         '<label>Jenis Kontrak</label><br><input id="ep-jeniskontrak" value="' + escapeHtml(p.jenis_kontrak || '') + '" style="width:100%;"><br><br>' +
         '<label>Tanggal Mulai</label><br><input type="date" id="ep-mulai" value="' + escapeHtml(p.tanggal_mulai || '') + '"><br><br>' +
         '<label>Tanggal Selesai</label><br><input type="date" id="ep-selesai" value="' + escapeHtml(p.tanggal_selesai || '') + '"><br><br>' +
-        '<label>Nilai HPS</label><br><input type="number" min="0" id="ep-hps" value="' + escapeHtml(p.nilai_hps || 0) + '"><br><br>' +
-        '<label>Nilai Kontrak</label><br><input type="number" min="0" id="ep-kontrak" value="' + escapeHtml(p.nilai_kontrak || 0) + '"><br><br>' +
+        '<label>Nilai HPS</label><br><input type="text" inputmode="numeric" data-rupiah id="ep-hps" value="' + escapeHtml(p.nilai_hps || 0) + '"><br><br>' +
+        '<label>Nilai Kontrak</label><br><input type="text" inputmode="numeric" data-rupiah id="ep-kontrak" value="' + escapeHtml(p.nilai_kontrak || 0) + '"><br><br>' +
+        '<p class="hint-text">PPK/Pejabat Pengadaan/KPA khusus untuk paket ini -- bisa berbeda dari paket lain di satker yang sama.</p>' +
+        pejabatPickerHtml('ep-ppknama', 'ep-ppknip') +
+        '<label>PPK (Nama)</label><br><input id="ep-ppknama" data-uppercase value="' + escapeHtml(p.ppk_nama || '') + '" style="width:100%;"><br>' +
+        '<label>PPK (NIP)</label><br><input id="ep-ppknip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(p.ppk_nip || '') + '" style="width:100%;"><br><br>' +
+        pejabatPickerHtml('ep-ppnama', 'ep-ppnip') +
+        '<label>Pejabat Pengadaan (Nama)</label><br><input id="ep-ppnama" data-uppercase value="' + escapeHtml(p.pp_nama || '') + '" style="width:100%;"><br>' +
+        '<label>Pejabat Pengadaan (NIP)</label><br><input id="ep-ppnip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(p.pp_nip || '') + '" style="width:100%;"><br><br>' +
+        pejabatPickerHtml('ep-kpanama', 'ep-kpanip') +
+        '<label>KPA (Nama)</label><br><input id="ep-kpanama" data-uppercase value="' + escapeHtml(p.kpa_nama || '') + '" style="width:100%;"><br>' +
+        '<label>KPA (NIP)</label><br><input id="ep-kpanip" data-nip inputmode="numeric" maxlength="18" value="' + escapeHtml(p.kpa_nip || '') + '" style="width:100%;"><br><br>' +
         '<label><input type="checkbox" id="ep-pph"' + (p.ada_pph ? ' checked' : '') + '> Ada PPh</label><br><br>' +
         '<label>Penyedia</label><br><select id="ep-penyedia"><option value="">(belum dipilih)</option>' +
           providerList.filter(function (pv) { return pv.status === 'AKTIF'; }).map(function (pv) { return '<option value="' + escapeHtml(pv.penyedia_id) + '"' + (pv.penyedia_id === p.penyedia_id ? ' selected' : '') + '>' + escapeHtml(pv.nama_perusahaan) + '</option>'; }).join('') +
@@ -728,7 +881,10 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
         '</form>';
     }
 
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
+    initRupiahFields(content);
+    attachPejabatPickers(content);
     attachRefreshButtonHandler(content, function (c) { renderPaketDetailView(c, paketId, true); });
     renderKakSection(paketId, bisaEdit, forceRefresh, content);
     renderHpsSection(paketId, bisaEdit, forceRefresh, content);
@@ -738,6 +894,7 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
         var file = input.files[0];
         if (!file) return;
         var requirementId = input.getAttribute('data-requirement-id');
+        var nomorSuratInput = content.querySelector('.doc-nomor-surat-input[data-requirement-id="' + requirementId + '"]');
         input.disabled = true;
         showToast('Mengunggah ' + file.name + '...');
         var reader = new FileReader();
@@ -745,7 +902,8 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
           var base64 = reader.result.split(',')[1];
           callApi('documents', 'upload', {
             paketId: paketId, documentRequirementId: requirementId,
-            fileName: file.name, mimeType: file.type, fileBase64: base64
+            fileName: file.name, mimeType: file.type, fileBase64: base64,
+            nomorSurat: nomorSuratInput ? nomorSuratInput.value : undefined
           }).then(function () {
             showToast('Dokumen diunggah.');
             clearAllCache();
@@ -754,6 +912,19 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
         };
         reader.onerror = function () { showToast('Gagal membaca file.', true); input.disabled = false; };
         reader.readAsDataURL(file);
+      });
+    });
+
+    content.querySelectorAll('[data-edit-nomor-surat]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var current = el.getAttribute('data-current-nomor') || '';
+        var baru = prompt('Nomor surat:', current);
+        if (baru === null) return;
+        callApi('documents', 'setNomorSurat', { documentId: el.getAttribute('data-edit-nomor-surat'), nomorSurat: baru }).then(function () {
+          showToast('Nomor surat disimpan.');
+          clearAllCache();
+          renderPaketDetailView(content, paketId, true);
+        }).catch(function (err) { showToast(err.message, true); });
       });
     });
 
@@ -794,8 +965,14 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
         jenisKontrak: document.getElementById('ep-jeniskontrak').value,
         tanggalMulai: document.getElementById('ep-mulai').value,
         tanggalSelesai: document.getElementById('ep-selesai').value,
-        nilaiHps: document.getElementById('ep-hps').value,
-        nilaiKontrak: document.getElementById('ep-kontrak').value,
+        nilaiHps: parseRupiahFieldValue('ep-hps'),
+        nilaiKontrak: parseRupiahFieldValue('ep-kontrak'),
+        ppkNama: document.getElementById('ep-ppknama').value,
+        ppkNip: document.getElementById('ep-ppknip').value,
+        ppNama: document.getElementById('ep-ppnama').value,
+        ppNip: document.getElementById('ep-ppnip').value,
+        kpaNama: document.getElementById('ep-kpanama').value,
+        kpaNip: document.getElementById('ep-kpanip').value,
         adaPph: document.getElementById('ep-pph').checked,
         penyediaId: document.getElementById('ep-penyedia').value
       }).then(function (result) {
@@ -814,7 +991,7 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
         renderPaketDetailView(content, paketId, true);
       }).catch(function (err) { showToast(err.message, true); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPaketDetailView(content, paketId, true); }); });
 }
 
 // ===================== KAK (Tahap 6) =====================
@@ -842,14 +1019,21 @@ function renderKakSection(paketId, bisaEdit, forceRefresh, content) {
     } else {
       html += '<span class="hint-text">Belum pernah di-generate. </span>';
     }
+    html += '</p>';
+    if (bisaEdit) {
+      html += '<label>Nomor Surat</label><br>' +
+        '<input id="kak-nomor-surat" value="' + escapeHtml(preview.nomorSurat || '') + '" placeholder="mis. 123/KAK/PP.00/2026" style="width:100%;max-width:320px;"><br><br>';
+    }
+    html += '<p>';
     html += '<button type="button" id="btn-kak-preview" class="btn-secondary">Lihat Pratinjau</button> ';
     if (bisaEdit) html += '<button type="button" id="btn-kak-finalize" class="btn-secondary">Generate &amp; Simpan PDF</button>';
     html += '</p>';
 
     if (history.length > 0) {
-      html += '<table class="data-table"><thead><tr><th>Versi</th><th>Dibuat</th><th>Catatan</th><th></th></tr></thead><tbody>';
+      html += '<table class="data-table"><thead><tr><th>Versi</th><th>Dibuat</th><th>Nomor Surat</th><th>Catatan</th><th></th></tr></thead><tbody>';
       history.forEach(function (h) {
         html += '<tr><td>v' + escapeHtml(h.version) + '</td><td>' + escapeHtml(formatTanggalSingkat(h.generated_at)) + '</td>' +
+          '<td>' + escapeHtml(h.nomor_surat || '-') + '</td>' +
           '<td>' + escapeHtml(h.change_note || '-') + '</td>' +
           '<td><a href="#" data-kak-download="' + escapeHtml(h.generated_document_id) + '">Unduh PDF</a></td></tr>';
       });
@@ -861,23 +1045,33 @@ function renderKakSection(paketId, bisaEdit, forceRefresh, content) {
 
     document.getElementById('btn-kak-preview').addEventListener('click', function () {
       var box = document.getElementById('kak-preview-box');
-      if (box.style.display === '') { box.style.display = 'none'; return; }
+      if (box.style.display === '' && box.dataset.nomor === currentKakNomorSurat_()) { box.style.display = 'none'; return; }
       box.style.display = '';
-      // Pratinjau dirender di dalam iframe sandbox: HTML template berasal dari
-      // data (bisa disunting admin), jadi jangan pernah disuntikkan langsung
-      // ke halaman aplikasi lewat innerHTML.
-      box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung Anda cetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
-        '<iframe id="kak-preview-frame" sandbox="" style="width:100%;height:600px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
-      var frame = document.getElementById('kak-preview-frame');
-      frame.srcdoc = preview.html;
+      box.dataset.nomor = currentKakNomorSurat_();
+      box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
+      // Pratinjau diambil ULANG (tidak pakai cache) supaya Nomor Surat yang baru
+      // diketik ikut terlihat di judul/kop -- bukan cuma preview.html lama.
+      callApi('kak', 'preview', { paketId: paketId, nomorSurat: currentKakNomorSurat_() }).then(function (fresh) {
+        // Pratinjau dirender di dalam iframe sandbox: HTML template berasal dari
+        // data (bisa disunting admin), jadi jangan pernah disuntikkan langsung
+        // ke halaman aplikasi lewat innerHTML.
+        box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung Anda cetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
+          '<iframe id="kak-preview-frame" sandbox="" style="width:100%;height:600px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
+        document.getElementById('kak-preview-frame').srcdoc = fresh.html;
+      }).catch(function (err) { box.innerHTML = '<p class="error-text">' + escapeHtml(err.message) + '</p>'; });
     });
+
+    function currentKakNomorSurat_() {
+      var el = document.getElementById('kak-nomor-surat');
+      return el ? el.value : (preview.nomorSurat || '');
+    }
 
     var finalizeBtn = document.getElementById('btn-kak-finalize');
     if (finalizeBtn) finalizeBtn.addEventListener('click', function () {
       if (!confirm('Generate KAK versi baru dan simpan sebagai PDF? Versi lama tetap tersimpan.')) return;
       var catatan = prompt('Catatan perubahan (opsional):', '') || '';
       var restore = setButtonBusy(finalizeBtn, 'Membuat PDF...');
-      callApi('kak', 'finalize', { paketId: paketId, changeNote: catatan }).then(function (res) {
+      callApi('kak', 'finalize', { paketId: paketId, changeNote: catatan, nomorSurat: currentKakNomorSurat_() }).then(function (res) {
         showToast('KAK v' + res.version + ' berhasil dibuat.');
         clearAllCache();
         renderPaketDetailView(content, paketId, true);
@@ -1092,8 +1286,10 @@ function unduhFileBase64(file) {
 
 // ===================== LAPORAN (Tahap 8) =====================
 function renderLaporanView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
     if (yearInfo.years.length === 0) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = '<h2>Laporan</h2><p>Belum ada Tahun Anggaran.</p>';
       return;
     }
@@ -1158,6 +1354,7 @@ function renderLaporanView(content, forceRefresh) {
         html += '</tbody></table>';
       }
 
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
       attachYearSelectorHandler(content, renderLaporanView);
       attachRefreshButtonHandler(content, renderLaporanView);
@@ -1169,8 +1366,8 @@ function renderLaporanView(content, forceRefresh) {
         });
         unduhCsv(baris, 'Rekap Satker.csv');
       });
-    }).catch(function (err) { renderError(content, err); });
-  }).catch(function (err) { renderError(content, err); });
+    }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderLaporanView(content, true); }); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderLaporanView(content, true); }); });
 }
 
 function unduhCsv(baris, namaFile) {
@@ -1234,13 +1431,14 @@ function setupGlobalSearch() {
 
 // ===================== PENYEDIA (Tahap 4) =====================
 function renderPenyediaView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   callApiCached('providers', 'providers', 'list', {}, forceRefresh).then(function (providers) {
     var html = '<h2>Penyedia</h2><p>' + refreshButtonHtml() + '</p>';
 
     if (currentUser.role === 'ADMIN' || currentUser.role === 'PENGELOLA') {
       html += '<h3>Tambah Penyedia</h3>' +
         '<form id="form-add-provider" class="inline-form">' +
-        '<input id="input-pv-nama" placeholder="Nama Perusahaan" required style="min-width:220px;"> ' +
+        '<input id="input-pv-nama" data-uppercase placeholder="Nama Perusahaan" required style="min-width:220px;"> ' +
         '<select id="input-pv-bentuk"><option value="">Bentuk Usaha</option>' +
           VALID_BENTUK_USAHA_OPTIONS.map(function (b) { return '<option>' + escapeHtml(b) + '</option>'; }).join('') +
         '</select><br>' +
@@ -1249,8 +1447,8 @@ function renderPenyediaView(content, forceRefresh) {
         '<input id="input-pv-alamat" placeholder="Alamat" style="min-width:320px;"><br>' +
         '<input id="input-pv-email" placeholder="Email" type="email"> ' +
         '<input id="input-pv-telepon" placeholder="Telepon"><br>' +
-        '<input id="input-pv-direktur" placeholder="Nama Direktur"> ' +
-        '<input id="input-pv-pic" placeholder="Nama PIC"> ' +
+        '<input id="input-pv-direktur" data-uppercase placeholder="Nama Direktur"> ' +
+        '<input id="input-pv-pic" data-uppercase placeholder="Nama PIC"> ' +
         '<input id="input-pv-nomorpic" placeholder="Nomor PIC"><br>' +
         '<input id="input-pv-rekening" placeholder="Nomor Rekening"> ' +
         '<input id="input-pv-bank" placeholder="Bank"><br>' +
@@ -1270,6 +1468,7 @@ function renderPenyediaView(content, forceRefresh) {
     });
     html += '</tbody></table>';
 
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, renderPenyediaView);
     content.querySelectorAll('[data-provider-link]').forEach(function (el) {
@@ -1303,10 +1502,11 @@ function renderPenyediaView(content, forceRefresh) {
         renderPenyediaView(content, true);
       }).catch(function (err) { showToast(err.message, true); restore(); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPenyediaView(content, true); }); });
 }
 
 function renderPenyediaDetailView(content, penyediaId, forceRefresh) {
+  var __gen = content.dataset.gen;
   callApiCached('providerDetail:' + penyediaId, 'providers', 'detail', { penyediaId: penyediaId }, forceRefresh).then(function (p) {
     var bisaEdit = currentUser.role === 'ADMIN' || currentUser.role === 'PENGELOLA';
     var html = '<p><a href="#/penyedia">&larr; Kembali ke Daftar Penyedia</a></p>' +
@@ -1347,6 +1547,7 @@ function renderPenyediaDetailView(content, penyediaId, forceRefresh) {
         '<button type="submit">Simpan Status</button></form>';
     }
 
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, function (c) { renderPenyediaDetailView(c, penyediaId, true); });
 
@@ -1405,11 +1606,12 @@ function renderPenyediaDetailView(content, penyediaId, forceRefresh) {
         renderPenyediaDetailView(content, penyediaId, true);
       }).catch(function (err) { showToast(err.message, true); restore(); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPenyediaDetailView(content, penyediaId, true); }); });
 }
 
 // ===================== TAHUN ANGGARAN =====================
 function renderYearsView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   callApiCached('years', 'years', 'list', {}, forceRefresh).then(function (years) {
     var html = '<h2>Tahun Anggaran</h2><p>' + refreshButtonHtml() + '</p>';
     if (currentUser.role === 'ADMIN') {
@@ -1420,6 +1622,7 @@ function renderYearsView(content, forceRefresh) {
       html += '<tr><td>' + escapeHtml(y.tahun) + '</td><td><span class="badge">' + escapeHtml(y.status) + '</span></td><td>' + escapeHtml(y.catatan) + '</td></tr>';
     });
     html += '</tbody></table>';
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, renderYearsView);
 
@@ -1434,15 +1637,78 @@ function renderYearsView(content, forceRefresh) {
         renderYearsView(content, true);
       }).catch(function (err) { showToast(err.message, true); restore(); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderYearsView(content, true); }); });
+}
+
+// ===================== DATA PEJABAT (ADMIN) =====================
+function renderPejabatView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
+  callApiCached('pejabatAll', 'pejabat', 'list', {}, forceRefresh).then(function (pejabatList) {
+    var html = '<h2>Data Pejabat</h2>' +
+      '<p class="hint-text">Daftar orang yang berulang kali jadi KPA/PPK/Pejabat Pengadaan -- dipilih lewat dropdown saat mengisi Satker atau Paket, supaya tidak perlu ketik ulang nama &amp; NIP yang sama.</p>' +
+      '<p>' + refreshButtonHtml() + '</p>';
+
+    if (currentUser.role === 'ADMIN') {
+      html += '<form id="form-add-pejabat" class="inline-form">' +
+        '<input id="input-pj-nama" data-uppercase placeholder="Nama" required> ' +
+        '<input id="input-pj-nip" data-nip inputmode="numeric" maxlength="18" placeholder="NIP (18 digit, opsional)"> ' +
+        '<input id="input-pj-jabatan" placeholder="Jabatan (mis. Kepala Kantor)"> ' +
+        '<button type="submit">Tambah</button></form>';
+    }
+
+    html += '<table class="data-table"><thead><tr><th>Nama</th><th>NIP</th><th>Jabatan</th><th>Status</th>' +
+      (currentUser.role === 'ADMIN' ? '<th></th>' : '') + '</tr></thead><tbody>';
+    pejabatList.forEach(function (p) {
+      html += '<tr><td>' + escapeHtml(p.nama) + '</td><td>' + escapeHtml(p.nip || '-') + '</td><td>' + escapeHtml(p.jabatan || '-') + '</td>' +
+        '<td><span class="badge ' + (p.status === 'AKTIF' ? 'badge-complete' : 'badge-netral') + '">' + escapeHtml(p.status) + '</span></td>';
+      if (currentUser.role === 'ADMIN') {
+        html += '<td><button type="button" class="btn-danger-text" data-toggle-pejabat="' + escapeHtml(p.pejabat_id) + '" data-current-status="' + escapeHtml(p.status) + '">' +
+          (p.status === 'AKTIF' ? 'Nonaktifkan' : 'Aktifkan') + '</button></td>';
+      }
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    if (content.dataset.gen !== __gen) return;
+    content.innerHTML = html;
+    attachRefreshButtonHandler(content, renderPejabatView);
+
+    var form = document.getElementById('form-add-pejabat');
+    if (form) form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      var restore = setButtonBusy(btn, 'Menyimpan...');
+      callApi('pejabat', 'create', {
+        nama: document.getElementById('input-pj-nama').value,
+        nip: document.getElementById('input-pj-nip').value,
+        jabatan: document.getElementById('input-pj-jabatan').value
+      }).then(function () {
+        showToast('Pejabat ditambahkan.');
+        clearAllCache();
+        renderPejabatView(content, true);
+      }).catch(function (err) { showToast(err.message, true); restore(); });
+    });
+
+    content.querySelectorAll('[data-toggle-pejabat]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var statusBaru = el.getAttribute('data-current-status') === 'AKTIF' ? 'NONAKTIF' : 'AKTIF';
+        callApi('pejabat', 'setStatus', { pejabatId: el.getAttribute('data-toggle-pejabat'), status: statusBaru }).then(function () {
+          showToast('Status pejabat diubah.');
+          clearAllCache();
+          renderPejabatView(content, true);
+        }).catch(function (err) { showToast(err.message, true); });
+      });
+    });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderPejabatView(content, true); }); });
 }
 
 // ===================== PENGGUNA (ADMIN) =====================
 function renderUsersView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   callApiCached('users', 'users', 'list', {}, forceRefresh).then(function (users) {
     var html = '<h2>Pengguna</h2><p>' + refreshButtonHtml() + '</p>' +
       '<form id="form-add-user" class="inline-form">' +
-      '<input id="input-u-nama" placeholder="Nama" required>' +
+      '<input id="input-u-nama" data-uppercase placeholder="Nama" required>' +
       '<input id="input-u-username" placeholder="Username" required><br>' +
       passwordFieldHtml('input-u-password', 'Password awal (min. 8 karakter)') +
       '<select id="input-u-role"><option value="PENGELOLA">Pengelola</option><option value="VIEWER">Viewer</option><option value="ADMIN">Admin</option></select>' +
@@ -1466,6 +1732,7 @@ function renderUsersView(content, forceRefresh) {
       '<button type="button" id="btn-cancel-reset">Batal</button>' +
       '</form></div>';
 
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, renderUsersView);
     attachPasswordToggles(content);
@@ -1520,11 +1787,12 @@ function renderUsersView(content, forceRefresh) {
         renderUsersView(content, true);
       }).catch(function (err) { showToast(err.message, true); restore(); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderUsersView(content, true); }); });
 }
 
 // ===================== ASSIGNMENT (ADMIN) =====================
 function renderAssignmentsView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   Promise.all([
     callApiCached('users', 'users', 'list', {}, forceRefresh),
     callApiCached('satkers:none', 'satkers', 'list', {}, forceRefresh),
@@ -1534,6 +1802,7 @@ function renderAssignmentsView(content, forceRefresh) {
     var users = results[0], satkers = results[1], years = results[2], assignments = results[3];
 
     if (users.length === 0 || satkers.length === 0 || years.length === 0) {
+      if (content.dataset.gen !== __gen) return;
       content.innerHTML = '<h2>Assignment Satker</h2><p>' + refreshButtonHtml() + '</p><p>Buat dulu minimal satu Pengguna, satu Satker, dan satu Tahun Anggaran sebelum membuat assignment.</p>';
       attachRefreshButtonHandler(content, renderAssignmentsView);
       return;
@@ -1562,6 +1831,7 @@ function renderAssignmentsView(content, forceRefresh) {
         '<td><span class="badge">' + escapeHtml(a.status) + '</span></td></tr>';
     });
     html += '</tbody></table>';
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, renderAssignmentsView);
 
@@ -1579,11 +1849,12 @@ function renderAssignmentsView(content, forceRefresh) {
         renderAssignmentsView(content, true);
       }).catch(function (err) { showToast(err.message, true); restore(); });
     });
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderAssignmentsView(content, true); }); });
 }
 
 // ===================== AUDIT LOG (ADMIN) =====================
 function renderAuditView(content, forceRefresh) {
+  var __gen = content.dataset.gen;
   callApiCached('audit', 'audit', 'list', {}, forceRefresh).then(function (logs) {
     var html = '<h2>Audit Log</h2><p>' + refreshButtonHtml() + '</p><p>Menampilkan hingga 200 aktivitas terbaru.</p>' +
       '<table class="data-table"><thead><tr><th>Waktu</th><th>Aksi</th><th>Modul</th><th>Keterangan</th></tr></thead><tbody>';
@@ -1592,13 +1863,15 @@ function renderAuditView(content, forceRefresh) {
         '<td>' + escapeHtml(l.module) + '</td><td>' + escapeHtml(l.description) + '</td></tr>';
     });
     html += '</tbody></table>';
+    if (content.dataset.gen !== __gen) return;
     content.innerHTML = html;
     attachRefreshButtonHandler(content, renderAuditView);
-  }).catch(function (err) { renderError(content, err); });
+  }).catch(function (err) { if (content.dataset.gen === __gen) renderError(content, err, function () { renderAuditView(content, true); }); });
 }
 
 // ===================== GANTI PASSWORD (SEMUA ROLE) =====================
 function renderProfileView(content) {
+  var __gen = content.dataset.gen;
   content.innerHTML =
     '<h2>Ganti Password</h2>' +
     '<form id="form-change-password" class="inline-form" style="max-width:340px;">' +

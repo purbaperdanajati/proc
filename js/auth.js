@@ -130,6 +130,13 @@ var currentCaptchaChallengeId = null;
     loadCaptcha();
   }
 
+  // Kode error yang BENAR-BENAR berarti sesi tidak valid/kedaluwarsa (datang dari
+  // AuthService.getCurrentUser/requireSession_ di backend) -- hanya untuk kode INI
+  // token boleh dihapus dan user dikembalikan ke form login.
+  var SESSION_INVALID_ERROR_CODES = ['UNAUTHENTICATED', 'ACCOUNT_INACTIVE', 'ACCESS_DENIED', 'NOT_FOUND'];
+
+  var sessionCheckRetryCount = 0;
+
   function checkExistingSession() {
     var token = getSessionToken();
     if (!token) {
@@ -139,10 +146,43 @@ var currentCaptchaChallengeId = null;
     }
     appLog('checkExistingSession: token ditemukan, memvalidasi ke server...');
     callApi('auth', 'getCurrentUser', {}).then(function (user) {
+      sessionCheckRetryCount = 0;
       appLog('checkExistingSession: sesi valid, lanjut sebagai ->', user);
       startApp(user);
     }).catch(function (err) {
+      // BUG FIX: sebelumnya SETIAP error di sini (termasuk NETWORK_ERROR/BAD_RESPONSE
+      // saat refresh browser -- mis. Apps Script baru "bangun tidur"/cold start dan
+      // sempat menjawab bukan JSON, atau koneksi sempat putus sepersekian detik) ikut
+      // menghapus token & memaksa user login ulang, padahal sesinya sendiri masih sah.
+      // Sekarang: hanya errorCode yang MEMANG berarti sesi tidak valid yang menghapus
+      // token. Error teknis/transient (tidak error.code sama sekali, NETWORK_ERROR,
+      // BAD_RESPONSE, CONFIG_ERROR, dst.) akan dicoba ulang otomatis beberapa kali
+      // dulu -- token TETAP disimpan supaya reload berikutnya bisa langsung pulih.
+      var errorCode = err && err.errorCode;
+      var sesiMemangTidakValid = errorCode && SESSION_INVALID_ERROR_CODES.indexOf(errorCode) !== -1;
+
+      if (!sesiMemangTidakValid && sessionCheckRetryCount < 2) {
+        sessionCheckRetryCount++;
+        appWarn('checkExistingSession: error teknis (' + (errorCode || 'tanpa kode') + '), coba lagi (' + sessionCheckRetryCount + '/2)... ->', err);
+        setTimeout(checkExistingSession, 1200);
+        return;
+      }
+
+      if (!sesiMemangTidakValid) {
+        // Sudah dicoba ulang dan tetap gagal karena error teknis (bukan sesi tidak
+        // valid) -- JANGAN hapus token (sesinya kemungkinan besar masih sah di
+        // server), cukup tampilkan pesan supaya user bisa mencoba lagi kapan saja
+        // (mis. tombol refresh browser) tanpa harus login ulang dari nol.
+        appError('checkExistingSession: gagal validasi sesi setelah retry (error teknis, token TIDAK dihapus) ->', err);
+        sessionCheckRetryCount = 0;
+        showLoginView();
+        var errEl = document.getElementById('login-error');
+        if (errEl) errEl.textContent = 'Tidak bisa menghubungi server untuk memvalidasi sesi Anda. Coba muat ulang halaman ini, atau login kembali di bawah.';
+        return;
+      }
+
       appWarn('checkExistingSession: sesi tidak valid/kedaluwarsa ->', err);
+      sessionCheckRetryCount = 0;
       setSessionToken(null);
       showLoginView();
     });

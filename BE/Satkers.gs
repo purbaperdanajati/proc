@@ -96,7 +96,9 @@ var SatkersService = {
     var now = new Date().toISOString();
     appendRow_('SATKER', {
       satker_id: id, kode_satker: kode, nama_satker: nama, jenis_satker: jenis,
-      wilayah: payload.wilayah || '', alamat: payload.alamat || '', status: 'AKTIF',
+      wilayah: payload.wilayah || '', alamat: payload.alamat || '',
+      website: payload.website || '', email: payload.email || '',
+      telepon: payload.telepon || '', kodepos: payload.kodepos || '', status: 'AKTIF',
       catatan: payload.catatan || '', created_at: now, updated_at: now,
       created_by: session.userId, updated_by: session.userId
     });
@@ -119,6 +121,10 @@ var SatkersService = {
     }
     if (payload.wilayah !== undefined) updates.wilayah = payload.wilayah;
     if (payload.alamat !== undefined) updates.alamat = payload.alamat;
+    if (payload.website !== undefined) updates.website = payload.website;
+    if (payload.email !== undefined) updates.email = payload.email;
+    if (payload.telepon !== undefined) updates.telepon = payload.telepon;
+    if (payload.kodepos !== undefined) updates.kodepos = payload.kodepos;
     if (payload.catatan !== undefined) updates.catatan = payload.catatan;
 
     var success = updateRowByField_('SATKER', 'satker_id', id, updates);

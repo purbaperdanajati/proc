@@ -24,10 +24,26 @@ function readAllRows_(sheetName) {
   if (values.length < 1) return { headers: [], rows: [] };
   var headers = values[0];
   var rows = [];
+  var tz = Session.getScriptTimeZone();
   for (var r = 1; r < values.length; r++) {
     var obj = { _row: r + 1 };
     for (var c = 0; c < headers.length; c++) {
-      obj[headers[c]] = values[r][c];
+      var v = values[r][c];
+      // BUG FIX (zona waktu): string tanggal polos "YYYY-MM-DD" yang ditulis
+      // dari <input type="date"> (tanggal_mulai, tanggal_selesai, tanggal_dipa,
+      // dst.) dikenali Google Sheets sebagai tanggal dan diam-diam diubah jadi
+      // nilai Date -- lalu saat dikirim ke klien sebagai JSON, Date itu
+      // di-serialize lewat .toISOString() (UTC), yang bisa menggeser tanggalnya
+      // maju/mundur satu hari tergantung timezone spreadsheet vs browser user.
+      // Diubah balik ke string "yyyy-MM-dd" di sini memakai timezone PROYEK
+      // yang sama dipakai Sheets untuk menafsirkannya semula -- round-trip jadi
+      // selalu tepat, apa pun timezone browser yang membuka aplikasi.
+      // Field datetime lengkap (created_at dkk, format ISO+T+Z) tidak
+      // terpengaruh karena Sheets tidak mengenali pola itu sebagai tanggal.
+      if (v instanceof Date) {
+        v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+      }
+      obj[headers[c]] = v;
     }
     rows.push(obj);
   }

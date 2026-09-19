@@ -48,6 +48,61 @@
     else sessionStorage.removeItem('sessionToken');
   }
 
+  // ===================== FORMAT INPUT OTOMATIS =====================
+  // Delegated di document supaya berlaku juga untuk field yang baru disuntikkan
+  // app.js lewat innerHTML (tidak perlu di-attach satu-satu tiap render ulang).
+  // Tiga jenis, ditandai lewat atribut data- pada elemen <input>:
+  //   data-uppercase -> semua field nama (Satker/PPK/KPA/Penyedia/User/dst)
+  //   data-nip       -> angka saja, maksimal 18 digit (field NIP)
+  //   data-rupiah    -> tampilan otomatis pakai pemisah ribuan "."; nilai
+  //                      angka mentahnya diambil lewat parseRupiahFieldValue()
+  //                      di bawah saat form disubmit (JANGAN pakai .value
+  //                      langsung untuk field ini, karena berisi titik pemisah).
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'INPUT') return;
+
+    if (el.hasAttribute('data-uppercase')) {
+      var pos = el.selectionStart;
+      el.value = el.value.toUpperCase();
+      if (pos !== null && el.setSelectionRange) el.setSelectionRange(pos, pos);
+      return;
+    }
+
+    if (el.hasAttribute('data-nip')) {
+      var batas = el.maxLength && el.maxLength > 0 ? el.maxLength : 18;
+      el.value = el.value.replace(/\D/g, '').slice(0, batas);
+      return;
+    }
+
+    if (el.hasAttribute('data-rupiah')) {
+      var raw = el.value.replace(/\D/g, '');
+      var posDariKanan = el.value.length - (el.selectionEnd || el.value.length);
+      el.value = raw ? Number(raw).toLocaleString('id-ID') : '';
+      var newPos = el.value.length - posDariKanan;
+      if (el.setSelectionRange) el.setSelectionRange(newPos, newPos);
+    }
+  });
+
+  // Isi awal (mis. saat form edit dibuka dengan value dari data tersimpan) juga
+  // perlu diformat -- dipanggil sekali setelah innerHTML berisi field
+  // data-rupiah disuntikkan (lihat pemanggilannya di app.js: initRupiahFields(root)).
+  function initRupiahFields(root) {
+    (root || document).querySelectorAll('input[data-rupiah]').forEach(function (el) {
+      var raw = String(el.value || '').replace(/\D/g, '');
+      el.value = raw ? Number(raw).toLocaleString('id-ID') : '';
+    });
+  }
+
+  // Ambil nilai angka mentah (tanpa pemisah ribuan) dari field data-rupiah,
+  // dipakai saat submit form -- pengganti document.getElementById(id).value biasa.
+  function parseRupiahFieldValue(id) {
+    var el = document.getElementById(id);
+    if (!el) return 0;
+    var raw = String(el.value || '').replace(/\D/g, '');
+    return raw ? Number(raw) : 0;
+  }
+
   /**
    * Menandai tombol submit sedang bekerja: nonaktifkan, ganti teks, dan
    * tampilkan spinner kecil (lewat class CSS .btn-busy di css/main.css) --

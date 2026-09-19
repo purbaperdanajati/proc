@@ -35,6 +35,8 @@
     top: 5px;
     background: none;
     border: none;
+    color: #23292a; /* main.css: "form button" set color:#fff untuk semua tombol di form --
+                        override di sini supaya ikon mata tidak jadi putih-di-atas-putih */
     cursor: pointer;
     font-size: 16px;
     padding: 4px;
@@ -45,6 +47,11 @@
   #btn-refresh-captcha {
     border: 1px solid #E1E6E3;
     background: #F7F9F8;
+    color: #23292a; /* BUG FIX: "form button" di main.css set color:#fff untuk SEMUA
+                        tombol di dalam <form> (termasuk tombol ini) -- background-nya
+                        sendiri sudah di-override jadi putih-keabuan di atas, tapi warna
+                        teks/ikon-nya ikut ke-inherit putih -> teks putih di atas tombol
+                        putih. Di-override eksplisit di sini. */
     border-radius: 8px;
     width: 36px;
     height: 36px;

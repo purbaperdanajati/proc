@@ -150,6 +150,17 @@ var PaketService = {
       if (!(nilaiKontrak >= 0)) throw AppError_('BAD_REQUEST', 'Nilai Kontrak tidak boleh negatif.');
       updates.nilai_kontrak = nilaiKontrak;
     }
+    // BUG FIX: PPK/Pejabat Pengadaan/KPA sebelumnya hanya diisi SEKALI (snapshot)
+    // saat paket dibuat dan tidak bisa diperbaiki lagi -- padahal satu satker
+    // bisa punya PPK/KPA berbeda untuk paket yang berbeda, dan snapshot awal bisa
+    // saja kosong kalau SATKER_TAHUN belum diisi saat paket ini pertama dibuat.
+    // Sekarang bisa diubah langsung per paket, independen dari SATKER_TAHUN.
+    if (payload.ppkNama !== undefined) updates.ppk_nama = payload.ppkNama;
+    if (payload.ppkNip !== undefined) updates.ppk_nip = payload.ppkNip;
+    if (payload.ppNama !== undefined) updates.pp_nama = payload.ppNama;
+    if (payload.ppNip !== undefined) updates.pp_nip = payload.ppNip;
+    if (payload.kpaNama !== undefined) updates.kpa_nama = payload.kpaNama;
+    if (payload.kpaNip !== undefined) updates.kpa_nip = payload.kpaNip;
 
     updateRowByField_('PAKET', 'paket_id', id, updates);
     computePaketCompletion_(id);
