@@ -90,6 +90,9 @@ function apiCall(module, action, payload, sessionToken) {
       case 'documents': result = DocumentsService.handle(action, payload || {}, sessionToken); break;
       case 'templates': result = TemplatesService.handle(action, payload || {}, sessionToken); break;
       case 'kak': result = KakService.handle(action, payload || {}, sessionToken); break;
+      case 'sk': result = SkService.handle(action, payload || {}, sessionToken); break;
+      case 'bast': result = BastService.handle(action, payload || {}, sessionToken); break;
+      case 'monev': result = MonevService.handle(action, payload || {}, sessionToken); break;
       case 'pejabat': result = PejabatService.handle(action, payload || {}, sessionToken); break;
       case 'hps': result = HpsService.handle(action, payload || {}, sessionToken); break;
       case 'reports': result = ReportsService.handle(action, payload || {}, sessionToken); break;

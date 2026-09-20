@@ -486,11 +486,18 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
           '</form>';
       }
 
+      if (yearInfo.selectedId) {
+        html += '<h3>SK PPK &amp; SK Pejabat Pengadaan</h3>' +
+          '<p class="hint-text">Ditandatangani KPA, berlaku untuk SEMUA paket satker ini pada tahun anggaran terpilih -- setelah di-generate, otomatis melengkapi checklist dokumen SK PPK/SK Pejabat Pengadaan di setiap paket, tidak perlu upload manual satu-satu.</p>' +
+          '<div id="sk-area"><p class="hint-text">Memuat...</p></div>';
+      }
+
       if (content.dataset.gen !== __gen) return;
       content.innerHTML = html;
       attachYearSelectorHandler(content, function (c) { renderSatkerDetailView(c, satkerId); });
       attachRefreshButtonHandler(content, function (c) { renderSatkerDetailView(c, satkerId, true); });
       attachPejabatPickers(content);
+      if (yearInfo.selectedId) renderSkSection(satkerId, yearInfo.selectedId, currentUser.role !== 'VIEWER', forceRefresh, content);
 
       var formProfil = document.getElementById('form-edit-satker');
       if (formProfil) formProfil.addEventListener('submit', function (e) {
@@ -542,6 +549,103 @@ function renderSatkerDetailView(content, satkerId, forceRefresh) {
 }
 
 // ===================== PAGU & JENIS PENGADAAN (Tahap 3) =====================
+// ===================== SK PPK & SK PEJABAT PENGADAAN =====================
+function renderSkSection(satkerId, tahunAnggaranId, bisaEdit, forceRefresh, content) {
+  var area = document.getElementById('sk-area');
+  if (!area) return;
+
+  Promise.all([
+    callApiCached('skHistory:PPK:' + satkerId + ':' + tahunAnggaranId, 'sk', 'history', { satkerId: satkerId, tahunAnggaranId: tahunAnggaranId, jenis: 'SK-PPK' }, forceRefresh),
+    callApiCached('skHistory:PP:' + satkerId + ':' + tahunAnggaranId, 'sk', 'history', { satkerId: satkerId, tahunAnggaranId: tahunAnggaranId, jenis: 'SK-PP' }, forceRefresh)
+  ]).then(function (results) {
+    var html = skBlokHtml_('PPK', 'SK-PPK', 'SK PPK', results[0], bisaEdit) +
+      skBlokHtml_('PP', 'SK-PP', 'SK Pejabat Pengadaan', results[1], bisaEdit);
+    area.innerHTML = html;
+    wireSkBlok_('PPK', 'SK-PPK', satkerId, tahunAnggaranId, content);
+    wireSkBlok_('PP', 'SK-PP', satkerId, tahunAnggaranId, content);
+  }).catch(function (err) {
+    appError('renderSkSection:', err);
+    area.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Gagal memuat data SK.') + '</p>';
+  });
+}
+
+function skBlokHtml_(suf, jenis, label, history, bisaEdit) {
+  var html = '<h4>' + escapeHtml(label) + '</h4><p>';
+  if (history.length > 0) {
+    html += 'Versi terakhir: v' + escapeHtml(history[0].version) + ' (' + escapeHtml(formatTanggalSingkat(history[0].generated_at)) + '), nomor ' + escapeHtml(history[0].nomor_surat || '-') + '. ';
+  } else {
+    html += '<span class="hint-text">Belum pernah di-generate. </span>';
+  }
+  html += '</p>';
+  if (bisaEdit) {
+    html += '<label>Nomor SK</label><br><input id="sk-' + suf + '-nomor" placeholder="mis. 0079" style="width:100%;max-width:220px;"><br><br>' +
+      '<label>Tahun SK</label><br><input id="sk-' + suf + '-tahun" placeholder="' + new Date().getFullYear() + '" style="width:100%;max-width:120px;"><br><br>';
+  }
+  html += '<p><button type="button" id="btn-sk-' + suf + '-preview" class="btn-secondary">Lihat Pratinjau</button> ';
+  if (bisaEdit) html += '<button type="button" id="btn-sk-' + suf + '-finalize" class="btn-secondary">Generate &amp; Simpan PDF</button>';
+  html += '</p>';
+  if (history.length > 0) {
+    html += '<table class="data-table"><thead><tr><th>Versi</th><th>Dibuat</th><th>Nomor</th><th>Catatan</th><th></th></tr></thead><tbody>';
+    history.forEach(function (h) {
+      html += '<tr><td>v' + escapeHtml(h.version) + '</td><td>' + escapeHtml(formatTanggalSingkat(h.generated_at)) + '</td>' +
+        '<td>' + escapeHtml(h.nomor_surat || '-') + '</td><td>' + escapeHtml(h.change_note || '-') + '</td>' +
+        '<td><a href="#" data-sk-download="' + escapeHtml(h.generated_document_id) + '">Unduh PDF</a></td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  html += '<div id="sk-' + suf + '-preview-box" style="display:none;"></div><br>';
+  return html;
+}
+
+function wireSkBlok_(suf, jenis, satkerId, tahunAnggaranId, content) {
+  var area = document.getElementById('sk-area');
+  function payload_() {
+    return {
+      satkerId: satkerId, tahunAnggaranId: tahunAnggaranId, jenis: jenis,
+      nomorSurat: (document.getElementById('sk-' + suf + '-nomor') || {}).value || '',
+      tahunSk: (document.getElementById('sk-' + suf + '-tahun') || {}).value || ''
+    };
+  }
+  var previewBtn = document.getElementById('btn-sk-' + suf + '-preview');
+  if (previewBtn) previewBtn.addEventListener('click', function () {
+    var box = document.getElementById('sk-' + suf + '-preview-box');
+    box.style.display = '';
+    box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
+    callApi('sk', 'preview', payload_()).then(function (fresh) {
+      box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung dicetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
+        '<iframe id="sk-' + suf + '-frame" sandbox="" style="width:100%;height:650px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
+      document.getElementById('sk-' + suf + '-frame').srcdoc = fresh.html;
+    }).catch(function (err) { box.innerHTML = '<p class="error-text">' + escapeHtml(err.message) + '</p>'; });
+  });
+  var finalizeBtn = document.getElementById('btn-sk-' + suf + '-finalize');
+  if (finalizeBtn) finalizeBtn.addEventListener('click', function () {
+    var p = payload_();
+    if (!p.nomorSurat) { showToast('Nomor SK wajib diisi.', true); return; }
+    if (!confirm('Generate ' + jenis + ' versi baru? Ini akan otomatis melengkapi checklist di SEMUA paket aktif satker ini pada tahun terpilih. Versi lama tetap tersimpan.')) return;
+    var catatan = prompt('Catatan perubahan (opsional):', '') || '';
+    var restore = setButtonBusy(finalizeBtn, 'Membuat PDF...');
+    p.changeNote = catatan;
+    callApi('sk', 'finalize', p).then(function (res) {
+      showToast(jenis + ' v' + res.version + ' berhasil dibuat (' + res.jumlahPaketTerdampak + ' paket ikut ter-update).');
+      clearAllCache();
+      renderSatkerDetailView(content, satkerId, true);
+    }).catch(function (err) { showToast(err.message, true); restore(); });
+  });
+  area.querySelectorAll('[data-sk-download]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      callApi('sk', 'download', { generatedDocumentId: el.getAttribute('data-sk-download') }).then(function (file) {
+        var link = document.createElement('a');
+        link.href = 'data:' + file.mimeType + ';base64,' + file.fileBase64;
+        link.download = file.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }).catch(function (err) { showToast(err.message, true); });
+    });
+  });
+}
+
 function renderPaguView(content, forceRefresh) {
   var __gen = content.dataset.gen;
   ensureYearsLoaded(forceRefresh).then(function (yearInfo) {
@@ -805,7 +909,11 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
     html += '<h3>KAK (Kerangka Acuan Kerja)</h3>' +
       '<div id="kak-area"><p class="hint-text">Memuat data KAK...</p></div>' +
       '<h3>HPS (Harga Perkiraan Sendiri)</h3>' +
-      '<div id="hps-area"><p class="hint-text">Memuat data HPS...</p></div>';
+      '<div id="hps-area"><p class="hint-text">Memuat data HPS...</p></div>' +
+      '<h3>BAST Manual</h3>' +
+      '<div id="bast-area"><p class="hint-text">Memuat data BAST...</p></div>' +
+      '<h3>Hasil Monev</h3>' +
+      '<div id="monev-area"><p class="hint-text">Memuat data monev...</p></div>';
 
     var totalWajib = checklist.filter(function (c) { return c.wajibSekarang; }).length;
     var totalTerpenuhi = checklist.filter(function (c) { return c.wajibSekarang && c.terpenuhi; }).length;
@@ -815,7 +923,7 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
       '<table class="data-table"><thead><tr><th></th><th>Dokumen</th><th>File</th>' + (bisaEdit ? '<th>Unggah</th>' : '') + '</tr></thead><tbody>';
     // Jenis dokumen yang punya nomor surat manual dari satker (bug fix #8) --
     // KAK sudah punya field Nomor Surat sendiri di renderKakSection.
-    var DOC_KODE_PUNYA_NOMOR_SURAT = ['SK-PPK', 'SK-PP', 'BAST-MANUAL', 'DOK-MONEV'];
+    var DOC_KODE_PUNYA_NOMOR_SURAT = ['SK-PPK', 'SK-PP', 'BAST-MANUAL', 'HASIL-MONEV'];
 
     checklist.forEach(function (item) {
       var icon = item.terpenuhi ? '<span class="badge badge-complete">&#10003;</span>' :
@@ -888,6 +996,8 @@ function renderPaketDetailView(content, paketId, forceRefresh) {
     attachRefreshButtonHandler(content, function (c) { renderPaketDetailView(c, paketId, true); });
     renderKakSection(paketId, bisaEdit, forceRefresh, content);
     renderHpsSection(paketId, bisaEdit, forceRefresh, content);
+    renderBastSection(paketId, bisaEdit, forceRefresh, content);
+    renderMonevSection(paketId, bisaEdit, forceRefresh, content);
 
     content.querySelectorAll('.doc-upload-input').forEach(function (input) {
       input.addEventListener('change', function () {
@@ -1103,6 +1213,248 @@ function formatTanggalSingkat(iso) {
   if (isNaN(d.getTime())) return String(iso);
   return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+// ===================== BAST MANUAL =====================
+function renderBastSection(paketId, bisaEdit, forceRefresh, content) {
+  var area = document.getElementById('bast-area');
+  if (!area) return;
+
+  callApiCached('bastHistory:' + paketId, 'bast', 'history', { paketId: paketId }, forceRefresh).then(function (history) {
+    var html = '<p class="hint-text">Tabel uraian pekerjaan diambil otomatis dari item HPS paket ini. Terdiri dari 3 bagian dalam satu PDF: Berita Acara Pemeriksaan Barang, Berita Acara Serah Terima Pekerjaan, dan Berita Acara Pembayaran.</p>';
+    html += '<p>';
+    if (history.length > 0) {
+      html += 'Versi terakhir: v' + escapeHtml(history[0].version) + ' (' + escapeHtml(formatTanggalSingkat(history[0].generated_at)) + '). ';
+    } else {
+      html += '<span class="hint-text">Belum pernah di-generate. </span>';
+    }
+    html += '</p>';
+    if (bisaEdit) {
+      html += '<label>Nomor Surat (dasar -- akan otomatis jadi .a/.b/.c untuk BAP/BAST/Pembayaran)</label><br>' +
+        '<input id="bast-nomor-surat" placeholder="mis. 82/Mts.10.105/PP.00.5/3/2026" style="width:100%;max-width:360px;"><br><br>' +
+        '<label>Nomor Surat Pesanan (opsional)</label><br>' +
+        '<input id="bast-nomor-sp" placeholder="mis. EP-01KFWT9AGZB4ECJYM4X2FAX89H" style="width:100%;max-width:360px;"><br><br>' +
+        '<label>Tanggal Surat Pesanan (opsional)</label><br>' +
+        '<input type="date" id="bast-tanggal-sp" style="width:100%;max-width:200px;"><br><br>' +
+        '<label>Persentase Kemajuan Pekerjaan</label><br>' +
+        '<input id="bast-persentase" value="100" style="width:100%;max-width:100px;"> %<br><br>';
+    }
+    html += '<p>';
+    html += '<button type="button" id="btn-bast-preview" class="btn-secondary">Lihat Pratinjau</button> ';
+    if (bisaEdit) html += '<button type="button" id="btn-bast-finalize" class="btn-secondary">Generate &amp; Simpan PDF</button>';
+    html += '</p>';
+
+    if (history.length > 0) {
+      html += '<table class="data-table"><thead><tr><th>Versi</th><th>Dibuat</th><th>Nomor Surat</th><th>Catatan</th><th></th></tr></thead><tbody>';
+      history.forEach(function (h) {
+        html += '<tr><td>v' + escapeHtml(h.version) + '</td><td>' + escapeHtml(formatTanggalSingkat(h.generated_at)) + '</td>' +
+          '<td>' + escapeHtml(h.nomor_surat || '-') + '</td><td>' + escapeHtml(h.change_note || '-') + '</td>' +
+          '<td><a href="#" data-bast-download="' + escapeHtml(h.generated_document_id) + '">Unduh PDF</a></td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '<div id="bast-preview-box" style="display:none;"></div>';
+    area.innerHTML = html;
+
+    function bastPayload_() {
+      return {
+        paketId: paketId,
+        nomorSurat: (document.getElementById('bast-nomor-surat') || {}).value || '',
+        nomorSuratPesanan: (document.getElementById('bast-nomor-sp') || {}).value || '',
+        tanggalSuratPesanan: (document.getElementById('bast-tanggal-sp') || {}).value || '',
+        persentaseKemajuan: (document.getElementById('bast-persentase') || {}).value || '100'
+      };
+    }
+
+    document.getElementById('btn-bast-preview').addEventListener('click', function () {
+      var box = document.getElementById('bast-preview-box');
+      box.style.display = '';
+      box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
+      callApi('bast', 'preview', bastPayload_()).then(function (fresh) {
+        box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung Anda cetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
+          '<iframe id="bast-preview-frame" sandbox="" style="width:100%;height:700px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
+        document.getElementById('bast-preview-frame').srcdoc = fresh.html;
+      }).catch(function (err) { box.innerHTML = '<p class="error-text">' + escapeHtml(err.message) + '</p>'; });
+    });
+
+    var finalizeBtn = document.getElementById('btn-bast-finalize');
+    if (finalizeBtn) finalizeBtn.addEventListener('click', function () {
+      if (!bastPayload_().nomorSurat) { showToast('Nomor surat wajib diisi.', true); return; }
+      if (!confirm('Generate BAST Manual versi baru dan simpan sebagai PDF? Versi lama tetap tersimpan.')) return;
+      var catatan = prompt('Catatan perubahan (opsional):', '') || '';
+      var restore = setButtonBusy(finalizeBtn, 'Membuat PDF...');
+      var payload = bastPayload_();
+      payload.changeNote = catatan;
+      callApi('bast', 'finalize', payload).then(function (res) {
+        showToast('BAST Manual v' + res.version + ' berhasil dibuat.');
+        clearAllCache();
+        renderPaketDetailView(content, paketId, true);
+      }).catch(function (err) { showToast(err.message, true); restore(); });
+    });
+
+    area.querySelectorAll('[data-bast-download]').forEach(function (el) {
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        callApi('bast', 'download', { generatedDocumentId: el.getAttribute('data-bast-download') }).then(function (file) {
+          var link = document.createElement('a');
+          link.href = 'data:' + file.mimeType + ';base64,' + file.fileBase64;
+          link.download = file.fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }).catch(function (err) { showToast(err.message, true); });
+      });
+    });
+  }).catch(function (err) {
+    appError('renderBastSection:', err);
+    area.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Gagal memuat data BAST.') + '</p>';
+  });
+}
+
+// ===================== HASIL MONEV =====================
+function renderMonevSection(paketId, bisaEdit, forceRefresh, content) {
+  var area = document.getElementById('monev-area');
+  if (!area) return;
+
+  Promise.all([
+    callApiCached('monevItems:' + paketId, 'monev', 'getItems', { paketId: paketId }, forceRefresh),
+    callApiCached('monevHistory:' + paketId, 'monev', 'history', { paketId: paketId }, forceRefresh)
+  ]).then(function (results) {
+    var itemsData = results[0], history = results[1];
+    var items = itemsData.items || [];
+
+    var html = '<p class="hint-text">Daftar barang diambil otomatis dari item HPS -- lengkapi kolom Volume Diterima, Kondisi, dan Tindak Lanjut, lalu Simpan Item sebelum generate.</p>';
+    html += '<p>';
+    if (history.length > 0) {
+      html += 'Versi terakhir: v' + escapeHtml(history[0].version) + ' (' + escapeHtml(formatTanggalSingkat(history[0].generated_at)) + '). ';
+    } else {
+      html += '<span class="hint-text">Belum pernah di-generate. </span>';
+    }
+    html += '</p>';
+
+    if (bisaEdit) {
+      html += '<div id="monev-grid" style="overflow-x:auto;"><table class="data-table"><thead><tr>' +
+        '<th>Uraian Barang</th><th>Spesifikasi</th><th>Satuan</th><th>Vol. Dipesan</th><th>Vol. Diterima</th><th>Kondisi</th><th>Tindak Lanjut</th></tr></thead><tbody>';
+      items.forEach(function (i, idx) {
+        html += '<tr data-row="' + idx + '">' +
+          '<td><input class="mv-nama" data-uppercase value="' + escapeHtml(i.nama_barang) + '" style="width:160px;"></td>' +
+          '<td><input class="mv-spek" value="' + escapeHtml(i.spesifikasi || '') + '" style="width:180px;"></td>' +
+          '<td><input class="mv-satuan" value="' + escapeHtml(i.satuan || '') + '" style="width:80px;"></td>' +
+          '<td><input class="mv-vp" value="' + escapeHtml(i.volume_pesan || '') + '" style="width:70px;"></td>' +
+          '<td><input class="mv-vt" value="' + escapeHtml(i.volume_terima || '') + '" style="width:70px;"></td>' +
+          '<td><input class="mv-kondisi" value="' + escapeHtml(i.kondisi || '') + '" style="width:160px;"></td>' +
+          '<td><input class="mv-tl" value="' + escapeHtml(i.tindak_lanjut || '') + '" style="width:120px;"></td></tr>';
+      });
+      html += '</tbody></table></div><br>' +
+        '<button type="button" id="btn-monev-save-items" class="btn-secondary">Simpan Item</button><br><br>' +
+        '<label>Nomor Surat</label><br><input id="monev-nomor-surat" placeholder="mis. B.018/Mts.10.101/KU.00/02/2026" style="width:100%;max-width:360px;"><br><br>' +
+        '<label>Kesimpulan (satu baris = satu poin)</label><br>' +
+        '<textarea id="monev-kesimpulan" rows="3" style="width:100%;max-width:520px;">' + DEFAULT_KESIMPULAN_MONEV_TEXT + '</textarea><br><br>';
+    } else if (items.length > 0) {
+      html += '<table class="data-table"><thead><tr><th>Uraian Barang</th><th>Vol. Diterima</th><th>Kondisi</th></tr></thead><tbody>';
+      items.forEach(function (i) {
+        html += '<tr><td>' + escapeHtml(i.nama_barang) + '</td><td>' + escapeHtml(i.volume_terima) + '</td><td>' + escapeHtml(i.kondisi) + '</td></tr>';
+      });
+      html += '</tbody></table><br>';
+    }
+
+    html += '<p>';
+    html += '<button type="button" id="btn-monev-preview" class="btn-secondary">Lihat Pratinjau</button> ';
+    if (bisaEdit) html += '<button type="button" id="btn-monev-finalize" class="btn-secondary">Generate &amp; Simpan PDF</button>';
+    html += '</p>';
+
+    if (history.length > 0) {
+      html += '<table class="data-table"><thead><tr><th>Versi</th><th>Dibuat</th><th>Nomor Surat</th><th>Catatan</th><th></th></tr></thead><tbody>';
+      history.forEach(function (h) {
+        html += '<tr><td>v' + escapeHtml(h.version) + '</td><td>' + escapeHtml(formatTanggalSingkat(h.generated_at)) + '</td>' +
+          '<td>' + escapeHtml(h.nomor_surat || '-') + '</td><td>' + escapeHtml(h.change_note || '-') + '</td>' +
+          '<td><a href="#" data-monev-download="' + escapeHtml(h.generated_document_id) + '">Unduh PDF</a></td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '<div id="monev-preview-box" style="display:none;"></div>';
+    area.innerHTML = html;
+
+    function readGridItems_() {
+      var rows = area.querySelectorAll('#monev-grid tbody tr');
+      var out = [];
+      rows.forEach(function (tr) {
+        out.push({
+          namaBarang: tr.querySelector('.mv-nama').value,
+          spesifikasi: tr.querySelector('.mv-spek').value,
+          satuan: tr.querySelector('.mv-satuan').value,
+          volumePesan: tr.querySelector('.mv-vp').value,
+          volumeTerima: tr.querySelector('.mv-vt').value,
+          kondisi: tr.querySelector('.mv-kondisi').value,
+          tindakLanjut: tr.querySelector('.mv-tl').value
+        });
+      });
+      return out;
+    }
+    function monevPayload_() {
+      var kesimpulanEl = document.getElementById('monev-kesimpulan');
+      var kesimpulan = kesimpulanEl ? kesimpulanEl.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+      return {
+        paketId: paketId,
+        nomorSurat: (document.getElementById('monev-nomor-surat') || {}).value || '',
+        kesimpulan: kesimpulan
+      };
+    }
+
+    var saveBtn = document.getElementById('btn-monev-save-items');
+    if (saveBtn) saveBtn.addEventListener('click', function () {
+      var restore = setButtonBusy(saveBtn, 'Menyimpan...');
+      callApi('monev', 'saveItems', { paketId: paketId, items: readGridItems_() }).then(function () {
+        showToast('Item monev disimpan.');
+        clearAllCache();
+        renderPaketDetailView(content, paketId, true);
+      }).catch(function (err) { showToast(err.message, true); restore(); });
+    });
+
+    document.getElementById('btn-monev-preview').addEventListener('click', function () {
+      var box = document.getElementById('monev-preview-box');
+      box.style.display = '';
+      box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
+      callApi('monev', 'preview', monevPayload_()).then(function (fresh) {
+        box.innerHTML = '<p class="hint-text">Pastikan item monev sudah Disimpan dulu supaya tabelnya ikut tampil di pratinjau.</p>' +
+          '<iframe id="monev-preview-frame" sandbox="" style="width:100%;height:700px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
+        document.getElementById('monev-preview-frame').srcdoc = fresh.html;
+      }).catch(function (err) { box.innerHTML = '<p class="error-text">' + escapeHtml(err.message) + '</p>'; });
+    });
+
+    var finalizeBtn = document.getElementById('btn-monev-finalize');
+    if (finalizeBtn) finalizeBtn.addEventListener('click', function () {
+      if (!monevPayload_().nomorSurat) { showToast('Nomor surat wajib diisi.', true); return; }
+      if (!confirm('Generate Hasil Monev versi baru dan simpan sebagai PDF? Pastikan item monev sudah disimpan. Versi lama tetap tersimpan.')) return;
+      var catatan = prompt('Catatan perubahan (opsional):', '') || '';
+      var restore = setButtonBusy(finalizeBtn, 'Membuat PDF...');
+      var payload = monevPayload_();
+      payload.changeNote = catatan;
+      callApi('monev', 'finalize', payload).then(function (res) {
+        showToast('Hasil Monev v' + res.version + ' berhasil dibuat.');
+        clearAllCache();
+        renderPaketDetailView(content, paketId, true);
+      }).catch(function (err) { showToast(err.message, true); restore(); });
+    });
+
+    area.querySelectorAll('[data-monev-download]').forEach(function (el) {
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        callApi('monev', 'download', { generatedDocumentId: el.getAttribute('data-monev-download') }).then(function (file) {
+          var link = document.createElement('a');
+          link.href = 'data:' + file.mimeType + ';base64,' + file.fileBase64;
+          link.download = file.fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }).catch(function (err) { showToast(err.message, true); });
+      });
+    });
+  }).catch(function (err) {
+    appError('renderMonevSection:', err);
+    area.innerHTML = '<p class="error-text">' + escapeHtml(err.message || 'Gagal memuat data monev.') + '</p>';
+  });
+}
+var DEFAULT_KESIMPULAN_MONEV_TEXT = 'Pelaksanaan pengadaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan.\nSeluruh barang/pekerjaan diterima sesuai jumlah dan spesifikasi.';
 
 // ===================== HPS (Tahap 7) =====================
 var hpsGridInstance = null;

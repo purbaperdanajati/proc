@@ -46,6 +46,7 @@ var PejabatService = {
     var now = new Date().toISOString();
     appendRow_('PEJABAT', {
       pejabat_id: id, nama: nama, nip: nip, jabatan: payload.jabatan || '',
+      pangkat_golongan: payload.pangkatGolongan || '',
       status: 'AKTIF', created_at: now, updated_at: now, created_by: session.userId
     });
     logAudit_(session.userId, 'CREATE_PEJABAT', 'PEJABAT', id, 'Membuat data pejabat: ' + nama);
@@ -70,6 +71,7 @@ var PejabatService = {
       updates.nip = nip;
     }
     if (payload.jabatan !== undefined) updates.jabatan = payload.jabatan;
+    if (payload.pangkatGolongan !== undefined) updates.pangkat_golongan = payload.pangkatGolongan;
 
     var success = updateRowByField_('PEJABAT', 'pejabat_id', id, updates);
     if (!success) throw AppError_('NOT_FOUND', 'Data pejabat tidak ditemukan.');

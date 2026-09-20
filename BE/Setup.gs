@@ -22,9 +22,10 @@ var SHEET_DEFINITIONS = {
   MASTER_DOCUMENT_REQUIREMENTS: ['document_requirement_id', 'jenis_pengadaan_id', 'nama_dokumen', 'kode_dokumen', 'wajib', 'kondisi', 'multiple_file', 'urutan', 'status'],
   DOCUMENTS: ['document_id', 'paket_id', 'document_requirement_id', 'file_name', 'drive_file_id', 'drive_url', 'mime_type', 'file_size', 'nomor_surat', 'uploaded_by', 'uploaded_at', 'version', 'previous_version_document_id', 'status'],
   HPS_ITEMS: ['hps_item_id', 'paket_id', 'row_index', 'col_index', 'value', 'rowspan', 'colspan', 'no_urut', 'nama', 'spesifikasi', 'volume', 'satuan', 'harga_satuan', 'jumlah', 'created_at', 'updated_at'],
-  GENERATED_DOCUMENTS: ['generated_document_id', 'paket_id', 'doc_type', 'version', 'nomor_surat', 'generated_by', 'generated_at', 'file_id', 'drive_url', 'snapshot_json', 'change_note', 'status'],
+  GENERATED_DOCUMENTS: ['generated_document_id', 'paket_id', 'satker_id', 'tahun_anggaran_id', 'doc_type', 'version', 'nomor_surat', 'generated_by', 'generated_at', 'file_id', 'drive_url', 'snapshot_json', 'change_note', 'status'],
   TEMPLATES: ['template_id', 'jenis_pengadaan_id', 'doc_type', 'nama_template', 'html_template', 'status'],
-  PEJABAT: ['pejabat_id', 'nama', 'nip', 'jabatan', 'status', 'created_at', 'updated_at', 'created_by'],
+  PEJABAT: ['pejabat_id', 'nama', 'nip', 'jabatan', 'pangkat_golongan', 'status', 'created_at', 'updated_at', 'created_by'],
+  MONEV_ITEMS: ['monev_item_id', 'paket_id', 'row_index', 'nama_barang', 'spesifikasi', 'satuan', 'volume_pesan', 'volume_terima', 'kondisi', 'tindak_lanjut', 'created_at', 'updated_at'],
   AUDIT_LOGS: ['audit_id', 'timestamp', 'user_id', 'action', 'module', 'record_id', 'description', 'ip_address', 'user_agent'],
   SESSIONS: ['session_id', 'user_id', 'token_hash', 'created_at', 'expires_at', 'last_activity', 'status'],
   NOTIFICATIONS: ['notification_id', 'tahun_anggaran_id', 'satker_id', 'paket_id', 'user_id', 'type', 'message', 'is_read', 'created_at'],
@@ -57,7 +58,7 @@ var SEED_DOCUMENT_REQUIREMENTS = [
   { kode: 'DOK-SEBELUM', nama: 'Dokumentasi Sebelum Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 7 },
   { kode: 'DOK-PROSES', nama: 'Dokumentasi Proses Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 8 },
   { kode: 'DOK-SETELAH', nama: 'Dokumentasi Setelah Pengerjaan', wajib: 'WAJIB', multiple: true, urutan: 9 },
-  { kode: 'BAST-INPROC', nama: 'BAST INPROC', wajib: 'WAJIB', multiple: false, urutan: 10 },
+  { kode: 'BAST-EKATALOG', nama: 'BAST E-Katalog', wajib: 'OPSIONAL', multiple: false, urutan: 10 },
   { kode: 'BAST-MANUAL', nama: 'BAST Manual', wajib: 'WAJIB', multiple: false, urutan: 11 },
   { kode: 'SPM', nama: 'SPM', wajib: 'WAJIB', multiple: false, urutan: 12 },
   { kode: 'SP2D', nama: 'SP2D', wajib: 'WAJIB', multiple: false, urutan: 13 },
@@ -144,8 +145,66 @@ var SEED_TEMPLATE_KAK = [
   '</td></tr></table></div>'
 ].join('\n');
 
-function initializeDatabase() {
-  var ss = SpreadsheetApp.openById(getSpreadsheetId_());
+// ===================== SK PPK / SK PEJABAT PENGADAAN (default templates) =====================
+// Mengikuti format contoh SK yang diberikan: KEPUTUSAN KEPALA [SATKER] .../ Menimbang /
+// Mengingat / Memutuskan / Kesatu (data penunjukan) / Kedua / Ketiga / tanda tangan KPA.
+// SK ini level SATKER+TAHUN (bukan per paket) -- ditandatangani KPA, menunjuk PPK/Pejabat
+// Pengadaan -- lihat SkService.gs. Sama seperti KAK: sepenuhnya lewat placeholder {{...}},
+// bisa disunting admin lewat menu Templates. Nomor SK & tahun SK (bukan tahun anggaran)
+// diisi manual lewat {{NOMOR_SURAT}} dan {{TAHUN_SK}} saat generate.
+var SEED_TEMPLATE_SK_PPK = [
+  '<div style="font-family:Arial,sans-serif;font-size:11pt;">',
+  '{{KOP_SURAT}}',
+  '<div style="text-align:center;font-weight:bold;">',
+  'KEPUTUSAN KEPALA {{NAMA_SATKER_UPPER}}<br>',
+  'KEMENTERIAN AGAMA KABUPATEN INDRAMAYU<br>',
+  'NOMOR {{NOMOR_SURAT}} TAHUN {{TAHUN_SK}}<br>TENTANG<br>',
+  'PENUNJUKAN PEJABAT PEMBUAT KOMITMEN<br>PENGADAAN BARANG DAN JASA PADA {{NAMA_SATKER_UPPER}}',
+  '</div><br>',
+  '<div style="text-align:center;font-weight:bold;">DENGAN RAHMAT TUHAN YANG MAHA ESA</div><br>',
+  '<div style="text-align:center;font-weight:bold;">{{NAMA_SATKER_UPPER}} :</div><br>',
+  '<table style="width:100%;border-collapse:collapse;" cellpadding="4">',
+  '<tr><td style="width:16%;vertical-align:top;">Menimbang</td><td style="width:3%;vertical-align:top;">:</td><td style="text-align:justify;">',
+  'a. bahwa dalam rangka pelaksanaan kegiatan Pengadaan Barang/Jasa secara transparan, terintegrasi dan terpadu sesuai tata nilai Pengadaan Barang/Jasa Pemerintah, perlu menunjuk Pejabat Pembuat Komitmen pelaksanaan kegiatan dimaksud;<br><br>',
+  'b. bahwa berdasarkan pertimbangan sebagaimana dimaksud dalam huruf a, perlu menetapkan Keputusan Kepala {{NAMA_SATKER}} tentang Penunjukan Pejabat Pembuat Komitmen;</td></tr>',
+  '<tr><td style="vertical-align:top;">Mengingat</td><td style="vertical-align:top;">:</td><td>',
+  '1. Undang-Undang Nomor 17 Tahun 2003 tentang Keuangan Negara;<br>',
+  '2. Undang-Undang Nomor 1 Tahun 2004 tentang Perbendaharaan Negara;<br>',
+  '3. Undang-Undang Nomor 15 Tahun 2004 tentang Pemeriksaan, Pengelolaan dan Tanggung Jawab Keuangan Negara;<br>',
+  '4. Peraturan Presiden Nomor 16 Tahun 2018 tentang Pengadaan Barang/Jasa Pemerintah sebagaimana telah diubah terakhir dengan Peraturan Presiden Nomor 46 Tahun 2025;<br>',
+  '5. Peraturan Menteri Agama Nomor 19 Tahun 2019 tentang Organisasi dan Tata Kerja Instansi Vertikal Kementerian Agama sebagaimana telah diubah dengan Peraturan Menteri Agama Nomor 6 Tahun 2022;<br>',
+  '6. Peraturan Menteri Agama Nomor 6 Tahun 2020 tentang Pejabat Perbendaharaan Negara Pada Kementerian Agama sebagaimana telah diubah dengan Peraturan Menteri Agama Nomor 32 Tahun 2021;<br>',
+  '7. DIPA {{NAMA_SATKER}} Tahun Anggaran {{TAHUN_ANGGARAN}} Nomor: {{SP_DIPA}} tanggal {{TANGGAL_DIPA}};<br>',
+  '<i style="font-size:9pt;">(PERINGATAN ADMINISTRATIF: daftar dasar hukum ini titik awal -- mohon disesuaikan dan dikonfirmasi ke bagian hukum/UKPBJ sebelum dipakai resmi.)</i></td></tr>',
+  '</table><br>',
+  '<div style="text-align:center;font-weight:bold;">MEMUTUSKAN</div><br>',
+  '<table style="width:100%;border-collapse:collapse;" cellpadding="4">',
+  '<tr><td style="width:16%;vertical-align:top;">Menetapkan</td><td style="width:3%;vertical-align:top;">:</td><td style="font-weight:bold;">KEPUTUSAN KEPALA {{NAMA_SATKER_UPPER}} TENTANG PENUNJUKAN PEJABAT PEMBUAT KOMITMEN PENGADAAN BARANG DAN JASA :</td></tr>',
+  '<tr><td style="vertical-align:top;">KESATU</td><td style="vertical-align:top;">:</td><td>Menunjuk Aparatur Sipil Negara:<br>',
+  'a. Nama &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {{NAMA_PPK}}<br>',
+  'b. NIP &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {{NIP_PPK}}<br>',
+  'c. Pangkat/Golongan : {{PANGKAT_GOLONGAN_PPK}}<br>',
+  'd. Jabatan &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {{JABATAN_PPK}}<br><br>',
+  'sebagai Pejabat Pembuat Komitmen (PPK) Pengadaan Barang dan Jasa pada {{NAMA_SATKER}} yang bersumber dari anggaran DIPA Tahun {{TAHUN_ANGGARAN}}</td></tr>',
+  '<tr><td style="vertical-align:top;">KEDUA</td><td style="vertical-align:top;">:</td><td>Segala biaya yang timbul akibat dikeluarkannya keputusan ini dibebankan pada DIPA Tahun Anggaran {{TAHUN_ANGGARAN}} dengan Nomor: {{SP_DIPA}}</td></tr>',
+  '<tr><td style="vertical-align:top;">KETIGA</td><td style="vertical-align:top;">:</td><td>Keputusan ini berlaku sejak tanggal ditetapkan dan apabila terdapat kekeliruan akan diperbaiki sebagaimana mestinya.</td></tr>',
+  '</table><br><br>',
+  '<table style="width:100%;"><tr><td style="width:55%;"></td><td style="text-align:left;">',
+  'Ditetapkan di : Indramayu<br>Pada Tanggal : {{TANGGAL_CETAK}}<br>Kepala {{NAMA_SATKER}}<br>Selaku Kuasa Pengguna Anggaran<br><br><br><br>',
+  '<b>{{KPA}}</b><br>NIP. {{NIP_KPA}}',
+  '</td></tr></table></div>'
+].join('\n');
+
+var SEED_TEMPLATE_SK_PP = SEED_TEMPLATE_SK_PPK
+  .replace(/PEJABAT PEMBUAT KOMITMEN/g, 'PEJABAT PENGADAAN BARANG DAN JASA')
+  .replace('sebagai Pejabat Pembuat Komitmen (PPK)', 'sebagai Pejabat Pengadaan Barang dan Jasa')
+  .replace(/\{\{NAMA_PPK\}\}/g, '{{NAMA_PP}}')
+  .replace(/\{\{NIP_PPK\}\}/g, '{{NIP_PP}}')
+  .replace(/\{\{PANGKAT_GOLONGAN_PPK\}\}/g, '{{PANGKAT_GOLONGAN_PP}}')
+  .replace(/\{\{JABATAN_PPK\}\}/g, '{{JABATAN_PP}}')
+  .replace('PEJABAT PENGADAAN BARANG DAN JASA<br>PENGADAAN BARANG DAN JASA PADA', 'PEJABAT PENGADAAN BARANG DAN JASA<br>PADA');
+
+function initializeDatabase() {  var ss = SpreadsheetApp.openById(getSpreadsheetId_());
 
   Object.keys(SHEET_DEFINITIONS).forEach(function (name) {
     var sheet = ss.getSheetByName(name);
@@ -192,6 +251,33 @@ function initializeDatabase() {
     appendRow_('TEMPLATES', {
       template_id: nextId_('TPL'), jenis_pengadaan_id: '', doc_type: 'KAK',
       nama_template: 'Template KAK Umum', html_template: SEED_TEMPLATE_KAK, status: 'AKTIF'
+    });
+  }
+  var existingSkPpk = readAllRows_('TEMPLATES').rows.filter(function (t) { return t.doc_type === 'SK-PPK'; });
+  if (existingSkPpk.length === 0) {
+    appendRow_('TEMPLATES', {
+      template_id: nextId_('TPL'), jenis_pengadaan_id: '', doc_type: 'SK-PPK',
+      nama_template: 'Template SK PPK Umum', html_template: SEED_TEMPLATE_SK_PPK, status: 'AKTIF'
+    });
+  }
+  var existingSkPp = readAllRows_('TEMPLATES').rows.filter(function (t) { return t.doc_type === 'SK-PP'; });
+  if (existingSkPp.length === 0) {
+    appendRow_('TEMPLATES', {
+      template_id: nextId_('TPL'), jenis_pengadaan_id: '', doc_type: 'SK-PP',
+      nama_template: 'Template SK Pejabat Pengadaan Umum', html_template: SEED_TEMPLATE_SK_PP, status: 'AKTIF'
+    });
+  }
+
+  // MIGRASI (aman diulang): untuk Spreadsheet yang sudah pernah di-initialize
+  // SEBELUM perubahan ini, baris requirement "BAST-INPROC" (lama) diubah jadi
+  // "BAST-EKATALOG" dan sifatnya OPSIONAL -- sesuai instruksi terbaru "BAST Manual
+  // dan BAST E-Katalog (E-Katalog opsional saja)". Kalau sheet-nya BARU (seed di
+  // atas sudah langsung menulis BAST-EKATALOG), baris BAST-INPROC tidak akan
+  // ditemukan dan migrasi ini otomatis tidak melakukan apa-apa.
+  var bastInproc = findRowByField_('MASTER_DOCUMENT_REQUIREMENTS', 'kode_dokumen', 'BAST-INPROC');
+  if (bastInproc) {
+    updateRowByField_('MASTER_DOCUMENT_REQUIREMENTS', 'document_requirement_id', bastInproc.document_requirement_id, {
+      kode_dokumen: 'BAST-EKATALOG', nama_dokumen: 'BAST E-Katalog', wajib: 'OPSIONAL', kondisi: ''
     });
   }
 

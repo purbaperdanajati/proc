@@ -83,7 +83,7 @@ var KakService = {
     logAudit_(access.session.userId, 'GENERATE_KAK', 'GENERATED_DOCUMENTS', id,
       'Generate KAK v' + versionBaru + ' untuk paket ' + paket.paket_id);
 
-    linkGeneratedDocToChecklist_(paket, 'KAK', file, access.session.userId);
+    linkGeneratedDocToChecklist_(paket, 'KAK', file, access.session.userId, nomorSurat);
     computePaketCompletion_(paket.paket_id);
 
     return { generatedDocumentId: id, version: versionBaru, fileName: namaFile };
@@ -287,7 +287,7 @@ function getNextDocVersion_(paketId, docType) {
  * admin, fungsi ini diam saja -- dokumen tetap tersimpan sah di GENERATED_DOCUMENTS,
  * cuma tidak ikut menandai checklist.
  */
-function linkGeneratedDocToChecklist_(paket, docType, file, userId) {
+function linkGeneratedDocToChecklist_(paket, docType, file, userId, nomorSurat) {
   var requirement = readAllRows_('MASTER_DOCUMENT_REQUIREMENTS').rows.filter(function (r) {
     return r.status === 'AKTIF' && r.kode_dokumen === docType &&
       (!r.jenis_pengadaan_id || r.jenis_pengadaan_id === paket.jenis_pengadaan_id);
@@ -315,7 +315,7 @@ function linkGeneratedDocToChecklist_(paket, docType, file, userId) {
   appendRow_('DOCUMENTS', {
     document_id: id, paket_id: paket.paket_id, document_requirement_id: requirement.document_requirement_id,
     file_name: file.getName(), drive_file_id: file.getId(), drive_url: file.getUrl(),
-    mime_type: 'application/pdf', file_size: file.getSize(),
+    mime_type: 'application/pdf', file_size: file.getSize(), nomor_surat: nomorSurat || '',
     uploaded_by: userId, uploaded_at: now, version: newVersion,
     previous_version_document_id: previousDoc ? previousDoc.document_id : '', status: 'ACTIVE'
   });
