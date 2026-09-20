@@ -69,7 +69,7 @@ var currentCaptchaChallengeId = null;
       return;
     }
     appLog('loadCaptcha: meminta CAPTCHA baru dari', (typeof API_URL !== 'undefined' ? API_URL : '(API_URL tidak terbaca)'));
-    callApi('auth', 'getCaptcha', {}).then(function (data) {
+    callApi('auth', 'getCaptcha', {}, { retryable: true }).then(function (data) {
       appLog('loadCaptcha: berhasil, menggambar kode ->', data);
       currentCaptchaChallengeId = data.challengeId;
       drawCaptcha(canvasEl, data.text);

@@ -70,6 +70,9 @@ var MonevService = {
       for (var r = values.length - 1; r >= 1; r--) {
         if (values[r][kolomPaket] === paket.paket_id) sheet.deleteRow(r + 1);
       }
+      // Sama seperti HpsService.gs: deleteRow() langsung tidak lewat
+      // appendRow_/updateRowByField_, jadi cache-nya harus dibatalkan manual.
+      invalidateSheetCache_('MONEV_ITEMS');
 
       var now = new Date().toISOString();
       var jumlah = 0;

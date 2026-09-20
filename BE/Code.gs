@@ -36,8 +36,8 @@ function doPost(e) {
  * sebelumnya, tidak berubah sama sekali.
  */
 function handleRequest_(e, method) {
-  var module, action, payload, sessionToken;
   try {
+    var module, action, payload, sessionToken;
     if (method === 'POST') {
       var raw = (e.postData && e.postData.contents) || '{}';
       var body = JSON.parse(raw);
@@ -51,12 +51,27 @@ function handleRequest_(e, method) {
       payload = e.parameter.payload ? JSON.parse(e.parameter.payload) : {};
       sessionToken = e.parameter.sessionToken || '';
     }
-  } catch (parseErr) {
+    var result = apiCall(module, action, payload, sessionToken);
+    return jsonResponse_(result);
+  } catch (err) {
+    // Jaring pengaman TERLUAR: apiCall() di bawah sudah menangkap error-nya
+    // sendiri secara normal (lihat catatan di dalamnya) sehingga baris di atas
+    // seharusnya TIDAK PERNAH melempar -- catch di sini murni untuk kegagalan
+    // parsing JSON permintaan, atau hal tak terduga lain, supaya SATU-SATUNYA
+    // cara request ini bisa berakhir adalah lewat jsonResponse_() yang normal.
+    // Kenapa ini penting: kalau ADA SAJA baris kode (sekarang atau nanti) yang
+    // melempar exception sampai keluar dari doGet()/doPost() tanpa tertangkap,
+    // Apps Script/Google menyajikan halaman error internalnya sendiri -- BUKAN
+    // respons ContentService biasa -- dan halaman itu TIDAK membawa header CORS.
+    // Browser lalu melaporkannya sebagai "diblokir kebijakan CORS", padahal
+    // penyebabnya adalah error tak tertangani di server, bukan soal CORS sama
+    // sekali. (Ini pola nyata yang pernah terjadi di apiCall() -- lihat
+    // komentar di sana.) Menjamin SEMUA jalur keluar lewat jsonResponse_()
+    // adalah yang membuat mekanisme CORS berbasis "simple request" (Bagian A
+    // README.md) benar-benar bisa diandalkan.
+    Logger.log('handleRequest_: error tak terduga di luar apiCall() -> ' + (err && err.stack || err));
     return jsonResponse_(fail_('BAD_REQUEST', 'Format request tidak valid (JSON tidak bisa dibaca).'));
   }
-
-  var result = apiCall(module, action, payload, sessionToken);
-  return jsonResponse_(result);
 }
 
 function jsonResponse_(obj) {
@@ -74,6 +89,21 @@ function apiCall(module, action, payload, sessionToken) {
   var requestId = Utilities.getUuid();
   var actionPath = module + '.' + action;
   try {
+    // PENTING: dipanggil DI DALAM try (bukan sebelum-nya) dan dibungkus try/catch
+    // sendiri -- cache ini murni optimisasi performa, kalau gagal karena APA PUN
+    // (mis. file belum sinkron) TIDAK BOLEH menjatuhkan seluruh request. Sebuah
+    // exception yang lolos ke LUAR try/catch di sini akan keluar sebagai
+    // "unhandled script error" Apps Script, yang disajikan Google TANPA header
+    // CORS -- persis kelihatan seperti "CORS blocked" di browser padahal
+    // penyebabnya di server. Ini BUG NYATA yang sempat terjadi: baris ini dulu
+    // ada di luar try, dan itu yang membuat SEMUA aksi (termasuk yang paling
+    // sederhana seperti auth.getCaptcha) ikut gagal dengan gejala CORS.
+    try {
+      resetSheetReadCache_();
+    } catch (cacheResetErr) {
+      Logger.log('resetSheetReadCache_ gagal (diabaikan, tidak fatal): ' + cacheResetErr);
+    }
+
     var result;
     switch (module) {
       case 'auth': result = AuthService.handle(action, payload || {}, sessionToken); break;

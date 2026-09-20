@@ -12,7 +12,7 @@
  * header Content-Type-nya yang disamarkan jadi text/plain. Lihat README.md
  * bagian "Kenapa CORS-nya begini" untuk penjelasan lengkap.
  */
-async function callApi(module, action, payload) {
+async function callApiOnce_(module, action, payload) {
   var actionPath = module + '.' + action;
 
   if (!API_URL || API_URL.indexOf('PASTE_URL') !== -1) {
@@ -50,8 +50,12 @@ async function callApi(module, action, payload) {
   try {
     // Baca sebagai teks dulu (bukan langsung response.json()) supaya kalau
     // parse-nya gagal, potongan respons mentahnya masih bisa dicatat ke console
-    // untuk membantu diagnosis (mis. Apps Script kadang mengembalikan halaman
-    // HTML -- bukan JSON -- saat cold start/quota/izin bermasalah).
+    // untuk membantu diagnosis. PENYEBAB PALING SERING: Apps Script Web App
+    // meng-redirect respons doPost() lewat URL sementara
+    // script.googleusercontent.com/macros/echo?... (mekanisme internal Google,
+    // bukan sesuatu yang bisa kita ubah) -- URL sementara itu KADANG 404 secara
+    // acak, biasanya kalau eksekusi backend-nya agak lama. Kalau ini muncul,
+    // responsnya akan berupa halaman HTML (<!DOCTYPE ...>), bukan JSON.
     mentahUntukDebug = await response.text();
     res = JSON.parse(mentahUntukDebug);
   } catch (parseErr) {
@@ -61,11 +65,62 @@ async function callApi(module, action, payload) {
   }
 
   if (res && res.success) {
+    // BUG FIX: pernah terjadi res.success === true tapi res.data hilang/undefined
+    // sama sekali (bukan {} kosong -- ok_() di backend SELALU membungkus data
+    // jadi {} minimal, jadi undefined/null di sini tidak mungkin datang dari
+    // eksekusi backend yang benar). Kemungkinan besar ini bentuk lain dari
+    // respons googleusercontent.com yang tidak lengkap/terpotong (lihat catatan
+    // BAD_RESPONSE lain di atas) -- daripada diam-diam mengembalikan undefined
+    // ke pemanggil (yang berakhir jadi TypeError membingungkan jauh di
+    // auth.js/app.js), diperlakukan tegas sebagai respons tidak valid di sini.
+    if (res.data === undefined || res.data === null) {
+      appError(actionPath + ': respons "sukses" tapi field data kosong/hilang (kemungkinan respons terpotong) ->', res);
+      throw { errorCode: 'BAD_RESPONSE', message: 'Respons server tidak lengkap. Coba lagi.' };
+    }
     appLog(actionPath + ': sukses ->', res.data);
     return res.data;
   }
   appWarn(actionPath + ': server menjawab gagal ->', res);
   throw res || { errorCode: 'UNKNOWN', message: 'Terjadi kesalahan tidak diketahui.' };
+}
+
+/**
+ * opts.retryable: true -> kalau gagal karena error TEKNIS/sesaat (BAD_RESPONSE
+ * dari kasus googleusercontent.com 404 di atas, atau NETWORK_ERROR), dicoba
+ * ulang otomatis sampai 2x dengan jeda singkat sebelum akhirnya melempar error
+ * ke pemanggil. TIDAK pernah retry untuk error yang berasal dari server
+ * (res.success === false dengan errorCode dari AppError_, mis. validasi/akses
+ * ditolak) -- itu bukan masalah "sesaat", mengulang tidak akan mengubah hasil.
+ *
+ * PENTING (keamanan data): opts.retryable HANYA dipasang true untuk aksi BACA
+ * (list/detail/history/preview/dsb) lewat callApiCached() atau secara eksplisit
+ * di app.js -- SENGAJA TIDAK PERNAH default true untuk aksi TULIS
+ * (create/update/upload/finalize/delete/login/dst). Kalau permintaan tulis
+ * sempat sampai ke server dan sukses dieksekusi TAPI responsnya yang gagal
+ * kebaca (persis skenario 404 googleusercontent.com ini), mengulang otomatis
+ * bisa membuat data TERDUPLIKASI (mis. dua paket, dua PDF ter-generate, dst).
+ * Untuk aksi tulis, error tetap ditampilkan ke user apa adanya -- lebih aman
+ * user menekan tombol lagi secara sadar (dan bisa melihat kalau ternyata datanya
+ * sudah masuk) daripada sistem mengulang sendiri tanpa sepengetahuan user.
+ */
+async function callApi(module, action, payload, opts) {
+  opts = opts || {};
+  var maxRetries = opts.retryable ? 2 : 0;
+  var percobaan = 0;
+  for (;;) {
+    try {
+      return await callApiOnce_(module, action, payload);
+    } catch (err) {
+      var errorCodeTeknis = !err || !err.errorCode || err.errorCode === 'BAD_RESPONSE' || err.errorCode === 'NETWORK_ERROR';
+      if (errorCodeTeknis && percobaan < maxRetries) {
+        percobaan++;
+        appWarn(module + '.' + action + ': error teknis, coba lagi (' + percobaan + '/' + maxRetries + ')... ->', err);
+        await new Promise(function (resolve) { setTimeout(resolve, 700 * percobaan); });
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /**
@@ -82,7 +137,7 @@ function callApiCached(cacheKey, module, action, payload, forceRefresh) {
     appLog('cache: pakai data tersimpan untuk ->', cacheKey);
     return Promise.resolve(dataCache[cacheKey]);
   }
-  return callApi(module, action, payload).then(function (data) {
+  return callApi(module, action, payload, { retryable: true }).then(function (data) {
     dataCache[cacheKey] = data;
     return data;
   });

@@ -180,6 +180,11 @@ function hapusItemHpsPaket_(paketId) {
   for (var r = values.length - 1; r >= 1; r--) {
     if (values[r][kolomPaket] === paketId) sheet.deleteRow(r + 1);
   }
+  // Baris ini menghapus langsung lewat sheet.deleteRow() (bukan lewat
+  // appendRow_/updateRowByField_ yang otomatis membatalkan cache) -- lihat
+  // catatan "CACHE BACA SHEET PER-REQUEST" di Utils.gs. Dibatalkan manual
+  // di sini supaya save() di bawah tidak membaca data HPS_ITEMS basi.
+  invalidateSheetCache_('HPS_ITEMS');
 }
 
 /**

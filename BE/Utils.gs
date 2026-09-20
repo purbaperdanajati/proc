@@ -4,6 +4,35 @@
  * hashing password, token sesi, dan amplop respons API standar.
  */
 
+// ===================== CACHE BACA SHEET PER-REQUEST =====================
+/**
+ * PENINGKATAN PERFORMA: beberapa handler (paling parah: DashboardService.getGlobal
+ * dan SatkersService.list, lewat computeSatkerStatus_) membaca sheet YANG SAMA
+ * berulang kali dalam satu loop -- satu kali per satker/paket. Untuk 15-20 satker,
+ * itu bisa puluhan pembacaan penuh sheet SATKER_TAHUN+PAKET dalam SATU request,
+ * yang bikin eksekusi lambat. Makin lama eksekusi Apps Script, makin besar
+ * peluang bug Google sendiri (link redirect googleusercontent.com/macros/echo
+ * kadang 404 -- lihat catatan di api.js sisi frontend) kena race dan gagal.
+ *
+ * Cache ini menyimpan hasil readAllRows_() PER SHEET, HANYA SELAMA SATU eksekusi
+ * apiCall() (di-reset paksa di awal apiCall(), lihat Code.gs) -- bukan disimpan
+ * lintas request, karena variabel global Apps Script TIDAK DIJAMIN kosong di
+ * eksekusi berikutnya (containernya kadang dipakai ulang Google). Setiap tulis
+ * (appendRow_/updateRowByField_, plus dua tempat yang menghapus baris langsung:
+ * HpsService.gs & MonevService.gs) WAJIB membatalkan entri cache sheet terkait
+ * lewat invalidateSheetCache_() supaya pembacaan berikutnya dalam request yang
+ * sama tidak memakai data basi.
+ */
+var _sheetReadCache_ = {};
+
+function resetSheetReadCache_() {
+  _sheetReadCache_ = {};
+}
+
+function invalidateSheetCache_(sheetName) {
+  delete _sheetReadCache_[sheetName];
+}
+
 // ===================== AKSES SHEET SEBAGAI OBJEK =====================
 
 function getSheet_(name) {
@@ -17,11 +46,19 @@ function getSheet_(name) {
  * Membaca SELURUH sheet sekali (getDataRange), lalu memetakan tiap baris
  * jadi objek {header: value, ...} + _row (nomor baris asli di sheet, 1-based).
  * Sengaja TIDAK memanggil getRange().getValue() berulang dalam loop.
+ * Hasilnya di-cache per nama sheet untuk sisa request ini -- lihat catatan
+ * "CACHE BACA SHEET PER-REQUEST" di atas.
  */
 function readAllRows_(sheetName) {
+  if (_sheetReadCache_.hasOwnProperty(sheetName)) return _sheetReadCache_[sheetName];
+
   var sheet = getSheet_(sheetName);
   var values = sheet.getDataRange().getValues();
-  if (values.length < 1) return { headers: [], rows: [] };
+  if (values.length < 1) {
+    var empty = { headers: [], rows: [] };
+    _sheetReadCache_[sheetName] = empty;
+    return empty;
+  }
   var headers = values[0];
   var rows = [];
   var tz = Session.getScriptTimeZone();
@@ -47,7 +84,9 @@ function readAllRows_(sheetName) {
     }
     rows.push(obj);
   }
-  return { headers: headers, rows: rows };
+  var result = { headers: headers, rows: rows };
+  _sheetReadCache_[sheetName] = result;
+  return result;
 }
 
 function findRowByField_(sheetName, matchField, matchValue) {
@@ -68,6 +107,7 @@ function appendRow_(sheetName, rowObject) {
     rowArr.push(v === undefined || v === null ? '' : v);
   }
   sheet.appendRow(rowArr);
+  invalidateSheetCache_(sheetName);
   return rowObject;
 }
 
@@ -91,6 +131,7 @@ function updateRowByField_(sheetName, matchField, matchValue, updates) {
         if (c !== -1) newRow[c] = updates[key];
       });
       sheet.getRange(r + 1, 1, 1, headers.length).setValues([newRow]);
+      invalidateSheetCache_(sheetName);
       return true;
     }
   }

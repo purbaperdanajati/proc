@@ -611,7 +611,7 @@ function wireSkBlok_(suf, jenis, satkerId, tahunAnggaranId, content) {
     var box = document.getElementById('sk-' + suf + '-preview-box');
     box.style.display = '';
     box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
-    callApi('sk', 'preview', payload_()).then(function (fresh) {
+    callApi('sk', 'preview', payload_(), { retryable: true }).then(function (fresh) {
       box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung dicetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
         '<iframe id="sk-' + suf + '-frame" sandbox="" style="width:100%;height:650px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
       document.getElementById('sk-' + suf + '-frame').srcdoc = fresh.html;
@@ -1161,7 +1161,7 @@ function renderKakSection(paketId, bisaEdit, forceRefresh, content) {
       box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
       // Pratinjau diambil ULANG (tidak pakai cache) supaya Nomor Surat yang baru
       // diketik ikut terlihat di judul/kop -- bukan cuma preview.html lama.
-      callApi('kak', 'preview', { paketId: paketId, nomorSurat: currentKakNomorSurat_() }).then(function (fresh) {
+      callApi('kak', 'preview', { paketId: paketId, nomorSurat: currentKakNomorSurat_() }, { retryable: true }).then(function (fresh) {
         // Pratinjau dirender di dalam iframe sandbox: HTML template berasal dari
         // data (bisa disunting admin), jadi jangan pernah disuntikkan langsung
         // ke halaman aplikasi lewat innerHTML.
@@ -1269,7 +1269,7 @@ function renderBastSection(paketId, bisaEdit, forceRefresh, content) {
       var box = document.getElementById('bast-preview-box');
       box.style.display = '';
       box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
-      callApi('bast', 'preview', bastPayload_()).then(function (fresh) {
+      callApi('bast', 'preview', bastPayload_(), { retryable: true }).then(function (fresh) {
         box.innerHTML = '<p class="hint-text">Pratinjau di bawah bisa langsung Anda cetak lewat browser (Ctrl+P) kalau tidak ingin membuat PDF versi baru.</p>' +
           '<iframe id="bast-preview-frame" sandbox="" style="width:100%;height:700px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
         document.getElementById('bast-preview-frame').srcdoc = fresh.html;
@@ -1414,7 +1414,7 @@ function renderMonevSection(paketId, bisaEdit, forceRefresh, content) {
       var box = document.getElementById('monev-preview-box');
       box.style.display = '';
       box.innerHTML = '<p class="hint-text">Memuat pratinjau...</p>';
-      callApi('monev', 'preview', monevPayload_()).then(function (fresh) {
+      callApi('monev', 'preview', monevPayload_(), { retryable: true }).then(function (fresh) {
         box.innerHTML = '<p class="hint-text">Pastikan item monev sudah Disimpan dulu supaya tabelnya ikut tampil di pratinjau.</p>' +
           '<iframe id="monev-preview-frame" sandbox="" style="width:100%;height:700px;border:1px solid #E1E6E3;border-radius:8px;background:#fff;"></iframe>';
         document.getElementById('monev-preview-frame').srcdoc = fresh.html;
