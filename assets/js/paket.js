@@ -227,8 +227,12 @@
       /* ---------- HPS ---------- */
       function tabHPS(host2) {
         var box = el('div'), editorRef = null, berubah = false;
-        var info = el('p.mini', { text: hpsModel ? 'Terakhir disimpan di server.' : 'Belum ada rincian. Tempel dari Excel atau impor berkas .xlsx.' });
-        editorRef = HPS.editor(box, hpsModel || HPS.contoh(), function () { berubah = true; });
+        var info = el('p.mini', {
+          text: hpsModel ? 'Terakhir disimpan di server.' :
+            'Belum ada rincian — kolom disiapkan mengikuti format ' + (App.jenis(p.jenis).rab ? 'pemeliharaan gedung' : 'barang/buku/ekstrakomptabel') +
+            '. Tempel dari Excel, impor .xlsx, atau ganti lewat tombol "Format baku".'
+        });
+        editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function () { berubah = true; }, p.jenis);
 
         function simpan() {
           var m = editorRef.model();

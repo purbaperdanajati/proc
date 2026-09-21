@@ -1,0 +1,20 @@
+SIPADU — berkas logo
+
+Taruh logo resmi Kementerian Agama di folder ini dengan nama persis:
+
+    logo-kemenag.png
+
+Ketentuan:
+- Format PNG, latar transparan.
+- Disarankan persegi, minimal 256x256 px (agar tetap tajam di kop surat cetak).
+- Setelah berkas ini ada, hapus atau abaikan saja LETAKKAN_LOGO_DI_SINI.txt — tidak
+  dibaca oleh aplikasi.
+
+Logo dipakai otomatis di tiga tempat:
+1. Halaman masuk (index.html) dan rail navigasi (app.html) — tampil langsung dari berkas ini.
+2. Kop semua dokumen yang dibuat lewat menu Cetak dokumen (KAK, HPS, SK PPK, SK PP,
+   BAST, Laporan Monev) — logo diambil dan diubah menjadi data URI oleh docgen.js
+   supaya ikut terbawa ke dalam berkas .doc yang diunduh.
+
+Jika logo belum ada, aplikasi tetap berjalan normal: kotak logo hanya akan kosong
+(disembunyikan lewat atribut onerror), tanpa gambar rusak atau ikon patah.

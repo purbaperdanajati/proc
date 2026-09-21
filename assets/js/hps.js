@@ -29,13 +29,32 @@
     return m;
   }
 
-  function contoh() {
+  /* Dua format baku sesuai contoh dokumen: pemeliharaan gedung memakai
+     URAIAN PEKERJAAN + SATUAN; peralatan/buku/ekstrakomptabel memakai
+     NAMA + SPESIFIKASI tanpa kolom satuan. */
+  function templateGedung() {
     var m = kosong(4, 6);
-    var h = ['NO.', 'URAIAN PEKERJAAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN (Rp.)', 'JUMLAH'];
+    var h = ['NO.', 'URAIAN PEKERJAAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN (Rp)', 'TOTAL (Rp)'];
     m.rows[0] = h.map(function (t) { return sel(t, { b: true }); });
     m.header = 0;
     m.map = { no: 0, uraian: 1, volume: 2, satuan: 3, harga: 4, jumlah: 5 };
+    m.tipe = 'gedung';
     return m;
+  }
+  function templateBarang() {
+    var m = kosong(4, 6);
+    var h = ['NO.', 'NAMA', 'SPESIFIKASI', 'VOL', 'HARGA SATUAN', 'JUMLAH'];
+    m.rows[0] = h.map(function (t) { return sel(t, { b: true }); });
+    m.header = 0;
+    m.map = { no: 0, uraian: 1, volume: 3, harga: 4, jumlah: 5 };
+    m.tipe = 'barang';
+    return m;
+  }
+  /* jenis: id dari CONFIG.JENIS_PENGADAAN. Jenis dengan RAB (pemeliharaan gedung)
+     memakai templat gedung; sisanya (peralatan, buku, ekstrakomptabel) memakai templat barang. */
+  function contoh(jenis) {
+    var j = (w.CONFIG.JENIS_PENGADAAN || []).filter(function (x) { return x.id === jenis; })[0];
+    return (j && j.rab === false) ? templateBarang() : templateGedung();
   }
 
   /* ---------- pembacaan tempelan ---------- */
@@ -128,7 +147,7 @@
       if (!s) return;
       var t = s.v.toLowerCase();
       if (/no\.?$|^no$|nomor/.test(t) && peta.no == null) peta.no = c;
-      else if (/uraian|pekerjaan|nama barang|spesifikasi|item/.test(t) && peta.uraian == null) peta.uraian = c;
+      else if (/uraian|pekerjaan|\bnama\b|spesifikasi|item/.test(t) && peta.uraian == null) peta.uraian = c;
       else if (/volume|vol\b|qty|jumlah barang|banyak/.test(t) && peta.volume == null) peta.volume = c;
       else if (/satuan$|sat\b/.test(t) && peta.satuan == null) peta.satuan = c;
       else if (/harga satuan|harga\b/.test(t) && peta.harga == null) peta.harga = c;
@@ -258,8 +277,8 @@
   }
 
   /* ---------- editor ---------- */
-  function editor(host, model, onChange) {
-    var m = model && model.rows && model.rows.length ? model : contoh();
+  function editor(host, model, onChange, jenisHint) {
+    var m = model && model.rows && model.rows.length ? model : contoh(jenisHint);
     var pilihan = null, jangkar = null;
     var alat = el('div.hps-alat'), bungkus = el('div.hps-wrap'), ringkas = el('div.hps-total');
 
@@ -424,7 +443,7 @@
     alat.appendChild(tombol('Hapus baris', 'Hapus baris terpilih', function () {
       if (!pilihan) return UI.toast('Pilih baris lebih dulu', 'bad');
       m.rows.splice(pilihan.r1, pilihan.r2 - pilihan.r1 + 1);
-      if (!m.rows.length) m = contoh();
+      if (!m.rows.length) m = contoh(jenisHint || m.tipe);
       pilihan = null; gambar(); ubah();
     }));
     alat.appendChild(tombol('Tebal', 'Tebalkan sel terpilih', function () {
@@ -433,6 +452,27 @@
         var s = m.rows[r][c]; if (s) s.b = !s.b;
       }
       gambar(); ubah();
+    }));
+    alat.appendChild(tombol('Format baku', 'Mulai dari susunan kolom standar', function () {
+      UI.modal({
+        title: 'Pilih format kolom standar',
+        body: el('div.rapi', null, [
+          el('p.mini', { text: 'Kolom yang ada saat ini akan diganti dengan salah satu susunan baku berikut. Isian yang sudah diketik akan hilang.' }),
+          el('div.dok-item', null, [el('div', null, [
+            el('div.dok-nama', { text: 'Pemeliharaan gedung' }),
+            el('div.dok-file', null, [el('span.diam', { text: 'NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN (Rp) · TOTAL (Rp)' })])
+          ])]),
+          el('div.dok-item', null, [el('div', null, [
+            el('div.dok-nama', { text: 'Peralatan, buku, ekstrakomptabel' }),
+            el('div.dok-file', null, [el('span.diam', { text: 'NO. · NAMA · SPESIFIKASI · VOL · HARGA SATUAN · JUMLAH' })])
+          ])])
+        ]),
+        actions: [
+          { label: 'Batal' },
+          { label: 'Pakai format gedung', onclick: function () { m = templateGedung(); gambar(); ubah(); } },
+          { label: 'Pakai format barang', kind: 'primary', onclick: function () { m = templateBarang(); gambar(); ubah(); } }
+        ]
+      });
     }));
     alat.appendChild(tombol('Peran kolom', 'Tentukan kolom volume, harga, dan jumlah', function () {
       var form = el('div.grid2');
@@ -464,8 +504,10 @@
       if (m.map.jumlah == null) return UI.toast('Tentukan peran kolom lebih dulu', 'bad');
       hitung(m); gambar(); ubah(); UI.toast('Total: ' + Fmt.rp(m.total), 'ok');
     }));
-    alat.appendChild(tombol('Kosongkan', 'Mulai dari tabel kosong', function () {
-      UI.confirm('Kosongkan seluruh isi kisi?', function () { m = contoh(); gambar(); ubah(); }, { yes: 'Kosongkan', kind: 'danger' });
+    alat.appendChild(tombol('Kosongkan', 'Mulai dari tabel kosong dengan format kolom yang sama', function () {
+      UI.confirm('Kosongkan seluruh isi kisi? Susunan kolom saat ini akan dipertahankan.', function () {
+        m = contoh(jenisHint || m.tipe); gambar(); ubah();
+      }, { yes: 'Kosongkan', kind: 'danger' });
     }));
 
     clear(host);
