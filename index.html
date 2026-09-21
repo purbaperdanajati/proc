@@ -1,100 +1,170 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SI Pengadaan Barang/Jasa - Kemenag Kab. Indramayu</title>
-  <link rel="stylesheet" href="css/main.css">
-  <link rel="stylesheet" href="css/login.css">
-
-  <!--
-    Library pihak ketiga (Keputusan 3: grid HPS pakai library, bukan buatan sendiri).
-    Versi DIPIN ke major version sesuai instruksi "versi harus dipin, sumber
-    didokumentasikan". Sengaja dipin ke v4 (bukan v5 terbaru) karena API v4
-    yang dipakai kode ini; v5 mengubah beberapa API-nya.
-      - jspreadsheet CE  : grid ala Excel + paste multi-sel   (MIT, github.com/jspreadsheet/ce)
-      - jsuites          : dependensi wajib jspreadsheet CE   (MIT, jsuites.net)
-      - SheetJS (xlsx)   : baca file .xlsx/.xls/.csv di browser (Apache-2.0, sheetjs.com)
-  -->
-  <script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/index.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.min.css" type="text/css">
-  <script src="https://cdn.jsdelivr.net/npm/jsuites@4/dist/jsuites.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites@4/dist/jsuites.min.css" type="text/css">
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Masuk — SIPADU</title>
+<link rel="icon" href="assets/img/logo-kemenag.png">
+<link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
-  <div id="app-root">
+<div id="bar"></div>
+<div class="masuk">
+  <section class="masuk-kiri">
+    <div class="masuk-logo">
+      <img src="assets/img/logo-kemenag.png" alt="" onerror="this.style.display='none'">
+      <span>Kantor Kementerian Agama<br>Kabupaten Indramayu</span>
+    </div>
+    <div>
+      <h1>Berkas pengadaan, satu pintu.</h1>
+      <p class="lead">Kelola paket pengadaan seluruh satker, pantau 13 syarat dokumen, dan cetak KAK, HPS, SK, BAST, serta laporan monev langsung dari perangkat Anda.</p>
+      <ul>
+        <li>13 syarat dokumen terpantau per paket</li>
+        <li>Berkas tersimpan rapi di Google Drive satker</li>
+        <li>Dokumen dibuat di perangkat, server tidak dibebani</li>
+      </ul>
+    </div>
+    <p class="mini" style="color:#8fb69d">SIPADU v1.0 · Sistem Informasi Pengadaan Terpadu</p>
+  </section>
 
-    <!-- ===================== VIEW: LOGIN ===================== -->
-    <div id="view-login" class="view">
-      <div class="login-card">
-        <div class="login-header">
-          <h1>Sistem Informasi Pengadaan Barang/Jasa</h1>
-          <p>Kementerian Agama Kabupaten Indramayu</p>
+  <section class="masuk-kanan">
+    <form class="masuk-form" id="form" autocomplete="on">
+      <h2>Masuk</h2>
+      <p class="sub" id="sub">Gunakan akun yang diberikan admin.</p>
+
+      <div id="setup" hidden style="margin-bottom:16px"></div>
+
+      <div class="rapi">
+        <label class="field">
+          <span class="lbl">Nama pengguna</span>
+          <input name="username" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">
+          <span class="lbl">Kata sandi</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <div class="field">
+          <span class="lbl">Ketik ulang kode di samping</span>
+          <div class="capt">
+            <input name="captcha" inputmode="text" autocomplete="off" maxlength="6" required aria-label="Kode captcha">
+            <canvas id="capt" width="264" height="92" aria-hidden="true"></canvas>
+            <button type="button" class="capt-btn" id="ulang" title="Ganti kode">&#8635;</button>
+          </div>
         </div>
-
-        <form id="form-login" autocomplete="off">
-          <label for="input-username">Username / Email</label>
-          <input type="text" id="input-username" autocomplete="username" required>
-
-          <label for="input-password">Password</label>
-          <div class="password-wrap">
-            <input type="password" id="input-password" autocomplete="current-password" required>
-            <button type="button" id="btn-toggle-password" aria-label="Tampilkan/sembunyikan password">&#128065;</button>
-          </div>
-
-          <label for="input-captcha">Kode Keamanan</label>
-          <div class="captcha-wrap">
-            <canvas id="captcha-canvas" width="150" height="50" aria-label="Gambar kode keamanan"></canvas>
-            <button type="button" id="btn-refresh-captcha" title="Muat ulang kode" aria-label="Muat ulang kode">&#8635;</button>
-          </div>
-          <input type="text" id="input-captcha" autocomplete="off" required placeholder="Ketik kode pada gambar di atas">
-
-          <div id="login-error" class="error-text" role="alert"></div>
-          <button type="submit" id="btn-login">MASUK</button>
-        </form>
-
-        <p class="login-footer">Internal System — Kementerian Agama Kabupaten Indramayu</p>
+        <button class="btn primary blok" id="kirim" type="submit">Masuk</button>
+        <p class="mini" id="pesan" role="status" aria-live="polite"></p>
       </div>
-    </div>
 
-    <!-- ===================== VIEW: APLIKASI ===================== -->
-    <div id="view-app" class="view" style="display:none;">
-      <aside class="sidebar">
-        <div class="sidebar-brand">SI Pengadaan</div>
-        <nav>
-          <a href="#/dashboard" data-view="dashboard">Dashboard</a>
-          <a href="#/satker" data-view="satker">Satker</a>
-          <a href="#/pagu" data-view="pagu">Pagu</a>
-          <a href="#/penyedia" data-view="penyedia">Penyedia</a>
-          <a href="#/paket" data-view="paket">Paket</a>
-          <a href="#/laporan" data-view="laporan">Laporan</a>
-          <a href="#/years" data-view="years" class="admin-only">Tahun Anggaran</a>
-          <a href="#/pejabat" data-view="pejabat" class="admin-only">Data Pejabat</a>
-          <a href="#/assignments" data-view="assignments" class="admin-only">Assignment</a>
-          <a href="#/users" data-view="users" class="admin-only">Pengguna</a>
-          <a href="#/audit" data-view="audit" class="admin-only">Audit Log</a>
-          <a href="#/profile" data-view="profile">Ganti Password</a>
-        </nav>
-      </aside>
-      <div class="main-area">
-        <header class="topbar">
-          <input type="search" id="global-search" placeholder="Cari satker, paket, penyedia..." autocomplete="off">
-          <span id="topbar-user"></span>
-          <button id="btn-logout">Keluar</button>
-        </header>
-        <div id="search-results" class="search-results" style="display:none;"></div>
-        <main id="content-area"></main>
-      </div>
-    </div>
+      <hr class="pisah">
+      <p class="mini">Lupa sandi atau belum punya akun? Hubungi admin sistem di Kankemenag Kabupaten Indramayu.
+        <a href="#" id="ganti-url">Ubah alamat server</a></p>
+    </form>
+  </section>
+</div>
 
-    <div id="toast" class="toast" style="display:none;"></div>
-  </div>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var form = $('#form'), pesan = $('#pesan'), kirim = $('#kirim'), kode = '';
 
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/app.js"></script>
+  /* ---------- captcha lokal (tanpa layanan luar) ---------- */
+  var HURUF = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // tanpa I,O,0,1 supaya tidak rancu
+  function gambar() {
+    var c = $('#capt'), x = c.getContext('2d'), W = c.width, H = c.height;
+    kode = ''; for (var i = 0; i < 5; i++) kode += HURUF[Math.floor(Math.random() * HURUF.length)];
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = '#eef1ec'; x.fillRect(0, 0, W, H);
+    for (var g = 0; g < 4; g++) {                       // garis pengacau
+      x.strokeStyle = 'rgba(15,107,63,' + (0.18 + Math.random() * 0.22) + ')';
+      x.lineWidth = 1 + Math.random() * 1.6; x.beginPath();
+      x.moveTo(Math.random() * W, Math.random() * H);
+      x.bezierCurveTo(Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H, Math.random() * W, Math.random() * H);
+      x.stroke();
+    }
+    for (var t = 0; t < 40; t++) {                      // bintik
+      x.fillStyle = 'rgba(22,36,29,' + (0.08 + Math.random() * 0.2) + ')';
+      x.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+    }
+    for (var i2 = 0; i2 < kode.length; i2++) {          // huruf miring acak
+      x.save();
+      x.translate(24 + i2 * 46, H / 2 + (Math.random() * 10 - 5));
+      x.rotate((Math.random() - 0.5) * 0.5);
+      x.font = (600 + Math.round(Math.random() * 2) * 100) + ' ' + (40 + Math.random() * 10) + 'px ui-sans-serif, Arial';
+      x.fillStyle = ['#0f6b3f', '#0a4c2d', '#16241d', '#b08425'][Math.floor(Math.random() * 4)];
+      x.fillText(kode[i2], 0, 14);
+      x.restore();
+    }
+  }
+  $('#ulang').addEventListener('click', function () { gambar(); form.captcha.value = ''; form.captcha.focus(); });
+  gambar();
+
+  /* ---------- pembatasan percobaan ---------- */
+  var GEMBOK = 'sipadu.gembok';
+  function sisaKunci() {
+    var g = Number(localStorage.getItem(GEMBOK) || 0);
+    return g > Date.now() ? Math.ceil((g - Date.now()) / 1000) : 0;
+  }
+  function gagalLagi() {
+    var n = Number(sessionStorage.getItem('sipadu.gagal') || 0) + 1;
+    sessionStorage.setItem('sipadu.gagal', n);
+    if (n >= 5) { localStorage.setItem(GEMBOK, Date.now() + 60000); sessionStorage.setItem('sipadu.gagal', 0); }
+  }
+
+  /* ---------- alamat server ---------- */
+  function tanyaUrl(paksa) {
+    var box = $('#setup');
+    if (!paksa && API.url()) { box.hidden = true; return; }
+    box.hidden = false;
+    clear(box).appendChild(el('div.rapi', null, [
+      UI.field({
+        label: 'Alamat Web App Apps Script', name: 'apiurl', value: API.url(),
+        placeholder: 'https://script.google.com/macros/s/..../exec',
+        hint: 'Salin dari Apps Script → Deploy → Kelola deployment. Harus berakhiran /exec.'
+      }),
+      el('button.btn.kecil', {
+        type: 'button', onclick: function () {
+          var v = box.querySelector('input').value.trim();
+          if (!/\/exec$/.test(v)) return UI.toast('Alamat harus berakhiran /exec', 'bad');
+          API.setUrl(v); box.hidden = true; UI.toast('Alamat server tersimpan', 'ok');
+        }
+      }, 'Simpan alamat')
+    ]));
+  }
+  $('#ganti-url').addEventListener('click', function (e) { e.preventDefault(); tanyaUrl(true); });
+  tanyaUrl(false);
+
+  if (new URLSearchParams(location.search).get('s') === 'habis') {
+    pesan.textContent = 'Sesi berakhir. Silakan masuk kembali.';
+  }
+  Auth.clear();
+
+  /* ---------- kirim ---------- */
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var kunci = sisaKunci();
+    if (kunci) { pesan.textContent = 'Terlalu banyak percobaan. Coba lagi dalam ' + kunci + ' detik.'; return; }
+    if (!API.url()) { tanyaUrl(true); return UI.toast('Isi alamat server lebih dulu', 'bad'); }
+    if (form.captcha.value.trim().toUpperCase() !== kode) {
+      pesan.textContent = 'Kode captcha tidak cocok.'; gambar(); form.captcha.value = ''; form.captcha.focus(); return;
+    }
+    pesan.textContent = ''; kirim.disabled = true; kirim.textContent = 'Memeriksa…';
+
+    API.call('login', { username: form.username.value.trim(), password: form.password.value }, { jsonp: false })
+      .then(function (d) {
+        Auth.save({ token: d.token, user: d.user, exp: d.exp });
+        sessionStorage.setItem('sipadu.gagal', 0);
+        location.href = 'app.html';
+      })
+      .catch(function (err) {
+        gagalLagi(); gambar(); form.captcha.value = '';
+        pesan.textContent = err.message || 'Gagal masuk.';
+        kirim.disabled = false; kirim.textContent = 'Masuk';
+      });
+  });
+})();
+</script>
 </body>
 </html>
