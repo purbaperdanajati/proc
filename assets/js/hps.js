@@ -20,7 +20,7 @@
   }
 
   function kosong(rows, cols) {
-    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, map: {}, judul: '' };
+    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, map: {}, judul: '' };
     for (var r = 0; r < (rows || 8); r++) {
       var baris = [];
       for (var c = 0; c < m.cols; c++) baris.push(sel(''));
@@ -183,7 +183,8 @@
       }
     });
     m.total = total;
-    return total;
+    m.pembulatan = hitungPembulatan(m);
+    return totalAkhir(m);
   }
 
   function totalSaja(m) {
@@ -196,6 +197,21 @@
       var n = angka(c.v); if (n !== null) total += n;
     });
     return total;
+  }
+
+  /* Hitung nilai pembulatan (selisih) sesuai mode pilihan.
+     mode: 0 = tidak dibulatkan, 100 = ratusan, 1000 = ribuan, dst. */
+  function hitungPembulatan(m) {
+    var mode = Number(m.bulatMode) || 0;
+    if (!mode) { m.pembulatan = 0; return 0; }
+    var total = totalSaja(m);
+    var dibulat = Math.ceil(total / mode) * mode;
+    return dibulat - total;
+  }
+  function totalAkhir(m) {
+    var t = totalSaja(m);
+    var p = Number(m.pembulatan) || 0;
+    return t + p;
   }
 
   /* ---------- tabel untuk dokumen ---------- */
@@ -234,6 +250,8 @@
       var span = Math.max(1, kolomPakai.length - 1);
       html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
       if (m.pembulatan) html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(m.pembulatan, 0) + '</td></tr>';
+      var akhir = totalAkhir(m);
+      html += '<tr><td class="tb" colspan="' + span + '">Total (terbilang)</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
     }
     return html + '</tbody></table>';
   }
@@ -326,9 +344,26 @@
 
     function hitungRingkas() {
       var t = totalSaja(m);
+      m.pembulatan = hitungPembulatan(m);
+      var akhir = totalAkhir(m);
       clear(ringkas);
       ringkas.appendChild(el('span', null, ['Total jumlah: ', el('b', { text: Fmt.rp(t) })]));
-      if (m.pembulatan) ringkas.appendChild(el('span.diam', null, 'Pembulatan: ' + Fmt.rp(m.pembulatan)));
+      if (m.pembulatan) ringkas.appendChild(el('span.diam', null, 'Pembulatan: +' + Fmt.rp(m.pembulatan)));
+      ringkas.appendChild(el('span', null, ['Total akhir: ', el('b', { text: Fmt.rp(akhir) })]));
+      /* opsi pembulatan */
+      var bulat = el('label', { style: 'display:flex;align-items:center;gap:6px;font-size:13px' });
+      bulat.appendChild(el('span', { text: 'Pembulatan:' }));
+      var sel = el('select.inp', {
+        style: 'width:auto;padding:4px 8px;font-size:13px',
+        onchange: function () { m.bulatMode = Number(sel.value); hitungRingkas(); ubah(); }
+      }, [
+        el('option', { value: '0', selected: !m.bulatMode }, 'Tidak'),
+        el('option', { value: '100', selected: m.bulatMode === 100 }, 'Ratusan (100)'),
+        el('option', { value: '1000', selected: m.bulatMode === 1000 }, 'Ribuan (1.000)'),
+        el('option', { value: '10000', selected: m.bulatMode === 10000 }, 'Dasar 10.000')
+      ]);
+      bulat.appendChild(sel);
+      ringkas.appendChild(bulat);
       ringkas.appendChild(el('span.diam', null, m.rows.length + ' baris × ' + m.cols + ' kolom'));
     }
 
@@ -526,6 +561,7 @@
 
   w.HPS = {
     kosong: kosong, contoh: contoh, editor: editor, hitung: hitung, total: totalSaja,
+    totalAkhir: totalAkhir, hitungPembulatan: hitungPembulatan,
     tabelDokumen: tabelDokumen, dariHTML: dariHTML, dariTSV: dariTSV, angka: angka
   };
 })(window);

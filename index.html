@@ -134,6 +134,8 @@
     ]));
   }
   $('#ganti-url').addEventListener('click', function (e) { e.preventDefault(); tanyaUrl(true); });
+  /* bila alamat server sudah diisi di config.js, sembunyikan link "Ubah alamat server" */
+  if (window.CONFIG && window.CONFIG.API_URL) $('#ganti-url').style.display = 'none';
   tanyaUrl(false);
 
   if (new URLSearchParams(location.search).get('s') === 'habis') {

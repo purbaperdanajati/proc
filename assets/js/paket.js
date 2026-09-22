@@ -32,7 +32,7 @@
         { name: 'satker_id', label: 'Satuan kerja', type: 'select', required: true, options: B.opsiDari(satker) },
         { name: 'jenis', label: 'Jenis pengadaan', type: 'select', required: true, options: [{ value: '', label: '— pilih —' }].concat(jenisOpsi()) },
         { name: 'nama', label: 'Nama paket', required: true, wide: true, placeholder: 'Pemeliharaan Gedung dan Bangunan' },
-        { name: 'pagu', label: 'Pagu (Rp)', type: 'number', required: true },
+        { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', required: true },
         { name: 'metode', label: 'Metode', type: 'select', options: ['Pengadaan Langsung', 'E-Purchasing', 'Penunjukan Langsung'].map(function (x) { return { value: x, label: x }; }) }
       ], { metode: 'Pengadaan Langsung' }, function (data) {
         data.tahun = App.state.tahun;
@@ -147,6 +147,7 @@
       var tabs = [
         { id: 'umum', label: 'Data paket', render: tabUmum },
         { id: 'hps', label: 'HPS / RAB', render: tabHPS },
+        { id: 'monev', label: 'Monev', render: tabMonev },
         { id: 'dok', label: 'Berkas (13)', render: tabDok },
         { id: 'cetak', label: 'Cetak dokumen', render: tabCetak }
       ];
@@ -171,8 +172,8 @@
           { name: 'nama', label: 'Nama paket', value: p.nama, wide: true, required: true },
           { name: 'jenis', label: 'Jenis pengadaan', type: 'select', value: p.jenis, options: jenisOpsi() },
           { name: 'status', label: 'Status', type: 'select', value: p.status, options: ['persiapan', 'proses', 'selesai'].map(function (x) { return { value: x, label: Fmt.kapital(x) }; }) },
-          { name: 'pagu', label: 'Pagu (Rp)', type: 'number', value: p.pagu },
-          { name: 'nilai', label: 'Nilai kontrak (Rp)', type: 'number', value: p.nilai },
+          { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', value: p.pagu },
+          { name: 'nilai', label: 'Nilai kontrak (Rp)', format: 'rp', value: p.nilai },
           { name: 'penyedia_id', label: 'Penyedia', type: 'select', value: p.penyedia_id, options: B.opsiDari(App.state.master.penyedia) },
           { name: 'ada_pph', label: 'Ada PPh (faktur & bupot)?', type: 'select', value: p.ada_pph ? 'ya' : 'tidak', options: [{ value: 'tidak', label: 'Tidak' }, { value: 'ya', label: 'Ya' }] },
           { name: 'metode', label: 'Metode pengadaan', value: p.metode },
@@ -195,7 +196,9 @@
           formNo.appendChild(UI.field({ name: 'tgl_' + x.k, label: 'Tanggal ' + x.l, type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) }));
         });
 
-        function simpan() {
+        function simpan(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
           var data = UI.formData(form);
           data.id = p.id;
           data.ada_pph = data.ada_pph === 'ya';
@@ -207,7 +210,7 @@
             meta = m;
             UI.toast('Perubahan tersimpan', 'ok');
             gambarRingkas();
-          }).catch(UI.err);
+          }).catch(function (e) { selesai(); UI.err(e); throw e; }).then(selesai);
         }
 
         host2.appendChild(el('div.rapi', null, [
@@ -220,7 +223,7 @@
               el('span.kanan.mini', { text: 'Dipakai otomatis saat dokumen dicetak' })]),
             el('div.badan', null, [formNo])
           ]),
-          el('div.baris', null, [el('button.btn.primary', { onclick: simpan }, 'Simpan perubahan')])
+          el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan perubahan')])
         ]));
       }
 
@@ -234,15 +237,17 @@
         });
         editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function () { berubah = true; }, p.jenis);
 
-        function simpan() {
+        function simpan(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
           var m = editorRef.model();
-          var total = HPS.total(m);
+          var total = HPS.totalAkhir(m);
           API.call('saveHPS', { paket_id: p.id, payload: JSON.stringify(m), total: total }, { jsonp: false })
             .then(function () {
               hpsModel = m; berubah = false;
               UI.toast('Rincian HPS tersimpan (' + Fmt.rp(total) + ')', 'ok');
               info.textContent = 'Tersimpan ' + Fmt.tanggal(new Date()) + '.';
-            }).catch(UI.err);
+            }).catch(function (e) { selesai(); UI.err(e); }).then(selesai);
         }
         w.onbeforeunload = function () { return berubah ? 'Rincian HPS belum disimpan.' : undefined; };
 
@@ -251,10 +256,108 @@
             el('h2', { text: 'Rincian HPS / RAB' }),
             el('div.kanan.baris', null, [
               el('button.btn.kecil', { onclick: function () { cetakDok('hps'); } }, 'Pratinjau HPS'),
-              el('button.btn.primary.kecil', { onclick: simpan }, 'Simpan rincian')
+              el('button.btn.primary.kecil', { onclick: function (e) { simpan(e); } }, 'Simpan rincian')
             ])
           ]),
           el('div.badan', null, [info, box])
+        ]));
+      }
+
+      /* ---------- monev: nilai per item ---------- */
+      function tabMonev(host2) {
+        var monevData = meta.monev_items ? (typeof meta.monev_items === 'string' ? JSON.parse(meta.monev_items) : meta.monev_items) : {};
+        var box = el('div');
+        var info = el('p.mini');
+
+        function gambarItem() {
+          clear(box);
+          if (!hpsModel || !hpsModel.rows) {
+            box.appendChild(el('p.diam', { text: 'Isi rincian HPS lebih dulu pada tab HPS / RAB.' }));
+            return;
+          }
+          var map = hpsModel.map || {};
+          if (map.jumlah == null) { box.appendChild(el('p.diam', { text: 'Tentukan peran kolom jumlah di tab HPS / RAB.' })); return; }
+          /* header tabel monev */
+          var tbl = el('table.tabel', { style: 'font-size:13px' });
+          var thead = el('thead', null, [el('tr', null, [
+            el('th', { text: 'No' }),
+            el('th', { text: 'Uraian' }),
+            el('th', { text: 'Jumlah HPS', style: 'text-align:right' }),
+            el('th', { text: 'Realisasi (Rp)', style: 'text-align:right' }),
+            el('th', { text: 'Keterangan / catatan monev' })
+          ])]);
+          var tbody = el('tbody'), no = 0;
+          hpsModel.rows.forEach(function (baris, r) {
+            if (r <= hpsModel.header) return;
+            var uraianCol = map.uraian != null ? map.uraian : 1;
+            var uraian = baris[uraianCol] ? baris[uraianCol].v : '';
+            var jumlah = baris[map.jumlah] ? HPS.angka(baris[map.jumlah].v) : 0;
+            if (!uraian && !jumlah) return;
+            no++;
+            var key = 'item_' + no;
+            var d = monevData[key] || {};
+            var realVal = d.realisasi != null ? d.realisasi : jumlah;
+            var realInput = el('input.inp', {
+              name: 'real_' + key, value: Fmt.num(Number(realVal) || 0, 0),
+              style: 'width:130px;text-align:right', dataset: { fmt: 'rp', key: key }
+            });
+            realInput.addEventListener('input', function () {
+              var awal = realInput.selectionStart, len = realInput.value.length;
+              var baru = Fmt.num(Fmt.parseNum(realInput.value), 0);
+              realInput.value = baru;
+              var sel = awal + (baru.length - len);
+              try { realInput.setSelectionRange(sel, sel); } catch (e) {}
+            });
+            realInput.addEventListener('focus', function () { realInput.select(); });
+            tbody.appendChild(el('tr', null, [
+              el('td', { text: String(no) }),
+              el('td', { text: uraian }),
+              el('td', { text: Fmt.rp(jumlah), style: 'text-align:right' }),
+              el('td', null, [realInput]),
+              el('td', null, [el('input.inp', {
+                name: 'ket_' + key, value: d.ket || '', placeholder: 'Sesuai / kurang / perbaikan…',
+                style: 'min-width:180px'
+              })])
+            ]));
+          });
+          tbl.appendChild(thead); tbl.appendChild(tbody);
+          box.appendChild(el('div.tabel-wrap', { style: 'max-height:56vh' }, [tbl]));
+        }
+
+        function simpanMonev(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
+          var data = {};
+          var inputs = box.querySelectorAll('input[name]');
+          inputs.forEach(function (inp) {
+            var nm = inp.name, m = nm.match(/(real|ket)_item_(\d+)/);
+            if (!m) return;
+            var key = 'item_' + m[2];
+            data[key] = data[key] || {};
+            if (m[1] === 'real') data[key].realisasi = Fmt.parseNum(inp.value);
+            else data[key].ket = inp.value;
+          });
+          var m = Object.assign({}, meta);
+          m.monev_items = data;
+          meta.monev_items = data;
+          return API.call('savePaket', { row: Object.assign({}, p, { meta: JSON.stringify(m) }) }, { jsonp: false })
+            .then(function () { Store.drop('paket.' + App.state.tahun); UI.toast('Nilai monev tersimpan', 'ok'); })
+            .catch(function (e) { selesai(); UI.err(e); }).then(selesai);
+        }
+
+        gambarItem();
+        host2.appendChild(el('div.kartu', null, [
+          el('header', null, [
+            el('h2', { text: 'Hasil monev per item' }),
+            el('div.kanan.baris', null, [
+              el('button.btn.kecil', { onclick: function () { cetakDok('monev'); } }, 'Pratinjau monev'),
+              el('button.btn.primary.kecil', { onclick: function (e) { simpanMonev(e); } }, 'Simpan nilai monev')
+            ])
+          ]),
+          el('div.badan', null, [
+            el('p.mini', { text: 'Isi realisasi dan keterangan tiap item. Bila ada item yang tidak sesuai HPS, catat pada kolom keterangan.' }),
+            box
+          ])
         ]));
       }
 
@@ -275,6 +378,7 @@
                   berkas.length ? el('div', null, berkas.map(function (b) {
                     return el('div.dok-file', null, [
                       el('a', { href: b.url, target: '_blank', rel: 'noopener', text: b.nama_file }),
+                      b.file_id ? el('button.btn.kecil', { onclick: function () { UI.drivePreview(b); } }, 'Pratinjau') : null,
                       b.sub ? UI.badge(b.sub) : null,
                       b.dari_penyedia ? UI.badge('dari data penyedia', 'info') : null,
                       b.size ? el('span.diam', { text: Fmt.bytes(b.size) }) : null,
@@ -328,7 +432,7 @@
           satker: s, paket: pk, tahun: p.tahun, jenis: App.jenis(p.jenis),
           kpa: App.pejabat(p.kpa_id || tugas.kpa_id), ppk: App.pejabat(p.ppk_id || tugas.ppk_id),
           pp: App.pejabat(p.pp_id || tugas.pp_id), penyedia: App.penyedia(p.penyedia_id),
-          sp_dipa: tugas.sp_dipa, hps: hpsModel,
+          sp_dipa: tugas.sp_dipa, hps: hpsModel, monev_items: meta.monev_items || {},
           kota: (App.state.master.config && App.state.master.config.kota) || 'Indramayu',
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
           nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),

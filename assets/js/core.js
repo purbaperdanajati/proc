@@ -291,6 +291,17 @@
       });
     },
 
+    /* Indikator proses penyimpanan: ubah tombol jadi "Menyimpan…" + spinner.
+       Pakai: var selesai = UI.busy(btn); ... promise.then(selesai). */
+    busy: function (btn, teks) {
+      if (!btn) return function () {};
+      var asli = btn.textContent, disable = btn.disabled;
+      btn.disabled = true;
+      btn.classList.add('proses');
+      btn.innerHTML = '<span class="spin"></span> ' + (teks || 'Menyimpan…');
+      return function () { btn.disabled = disable; btn.classList.remove('proses'); btn.textContent = asli; };
+    },
+
     field: function (o) {
       var id = 'f_' + (o.name || Math.random().toString(36).slice(2));
       var input;
@@ -303,12 +314,34 @@
         input = el('textarea', { id: id, name: o.name, rows: o.rows || 3, required: o.required, placeholder: o.placeholder || '' });
         input.value = o.value == null ? '' : o.value;
       } else {
+        var t = o.type || 'text';
+        /* format ribuan otomatis untuk field nominal (o.format === 'rp') */
+        if (o.format === 'rp') { t = 'text'; }
         input = el('input', {
-          id: id, name: o.name, type: o.type || 'text', required: o.required,
+          id: id, name: o.name, type: t, required: o.required,
           placeholder: o.placeholder || '', step: o.step, min: o.min, max: o.max,
-          autocomplete: o.autocomplete || 'off'
+          autocomplete: o.autocomplete || 'off', inputmode: o.format === 'rp' ? 'numeric' : (o.inputmode || undefined)
         });
-        input.value = o.value == null ? '' : o.value;
+        input.value = o.value == null ? '' : (o.format === 'rp' ? Fmt.num(Number(o.value) || 0, 0) : o.value);
+        if (o.format === 'rp') {
+          var raw = input;
+          var disp = input.value;
+          raw.style.textAlign = 'right';
+          function sync(v) { raw.dataset.angka = String(Fmt.parseNum(v)); }
+          input.addEventListener('input', function () {
+            var awal = input.selectionStart, len = input.value.length;
+            var baru = Fmt.num(Fmt.parseNum(input.value), 0);
+            input.value = baru;
+            sync(baru);
+            var sel = awal + (baru.length - len);
+            try { input.setSelectionRange(sel, sel); } catch (e) {}
+          });
+          input.addEventListener('focus', function () { sync(input.value); });
+          input.addEventListener('blur', function () { sync(input.value); });
+          sync(input.value);
+          /* pastikan formData mengembalikan angka mentah, bukan teks berpemisah */
+          input.dataset.fmt = 'rp';
+        }
       }
       if (o.readonly) input.setAttribute('readonly', 'readonly');
       if (o.oninput) input.addEventListener('input', o.oninput);
@@ -327,7 +360,10 @@
       var o = {};
       Array.prototype.forEach.call(form.elements, function (n) {
         if (!n.name) return;
-        o[n.name] = n.type === 'checkbox' ? n.checked : n.value;
+        var v = n.type === 'checkbox' ? n.checked : n.value;
+        /* kembalikan angka mentah untuk field berformat ribuan */
+        if (n.dataset && n.dataset.fmt === 'rp') v = String(Fmt.parseNum(n.value));
+        o[n.name] = v;
       });
       return o;
     },
@@ -338,6 +374,40 @@
         el('p.empty-p', { text: pesan }),
         aksi || null
       ]);
+    },
+
+    /* Pratinjau berkas dari Google Drive. file_id wajib.
+       Bila ada API key, dipakai untuk preview native Google;
+       jika tidak, gunakan embed link/preview Drive. */
+    drivePreview: function (file) {
+      var fid = file && (file.file_id || file.id);
+      if (!fid) return UI.toast('Berkas tidak memiliki ID Drive', 'bad');
+      var key = w.CONFIG && w.CONFIG.DRIVE_API_KEY;
+      var src, embeddable = true;
+      var mime = (file.mime || file.nama_file || '').toLowerCase();
+      /* gambar & PDF bisa langsung */
+      if (/image\/(png|jpe?g|gif|webp)/.test(mime) || /\.(png|jpe?l|gif|webp)$/.test(mime)) {
+        src = 'https://drive.google.com/thumbnail?id=' + fid + '&sz=w1200';
+      } else if (mime.indexOf('pdf') > -1 || /\.pdf$/.test(mime)) {
+        src = 'https://drive.google.com/file/d/' + fid + '/preview';
+      } else {
+        /* dokumen office & lainnya: pakai preview Drive */
+        src = 'https://drive.google.com/file/d/' + fid + '/preview';
+      }
+      var frame = el('iframe', {
+        src: src, style: 'width:100%;height:68vh;border:1px solid var(--garis);border-radius:6px;background:#fff',
+        allow: 'autoplay'
+      });
+      var fallback = el('p.mini', { style: 'margin-top:8px' });
+      var link = el('a', { href: file.url || ('https://drive.google.com/file/d/' + fid + '/view'), target: '_blank' }, 'Buka di Drive');
+      fallback.appendChild(link);
+      var box = el('div', null, [frame, fallback]);
+      var btn = UI.modal({
+        title: 'Pratinjau: ' + (file.nama_file || file.nama || 'berkas'),
+        body: box,
+        actions: [{ label: 'Tutup' }]
+      });
+      return btn;
     },
     loading: function (t) { return el('div.loading', { text: t || 'Memuat…' }); },
     badge: function (text, kind) { return el('span.badge' + (kind ? '.' + kind : ''), { text: text }); },

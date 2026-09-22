@@ -119,7 +119,15 @@
     $('#who').textContent = u.nama || u.username;
     $('#peran').textContent = (u.role === 'admin' ? 'Admin sistem' : 'Pengelola satker') + ' · TA ' + App.state.tahun;
   }
-  $('#burger').addEventListener('click', function () { document.body.classList.toggle('nav-buka'); });
+  $('#burger').addEventListener('click', function (e) { e.stopPropagation(); document.body.classList.toggle('nav-buka'); });
+  /* klik area gelap di luar rail untuk menutup menu (mobile) */
+  document.addEventListener('click', function (e) {
+    if (!document.body.classList.contains('nav-buka')) return;
+    var rail = $('#rail');
+    if (rail && !rail.contains(e.target) && e.target.id !== 'burger') {
+      document.body.classList.remove('nav-buka');
+    }
+  });
   $('#keluar').addEventListener('click', function () {
     UI.confirm('Keluar dari SIPADU?', function () {
       API.call('logout', {}).catch(function () { }).then(function () { Auth.clear(); location.href = 'index.html'; });

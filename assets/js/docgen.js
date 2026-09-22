@@ -244,13 +244,13 @@
   T.hps = function (c) {
     var s = c.satker || {}, pk = c.paket || {};
     var tabel = c.hps && c.hps.rows ? HPS.tabelDokumen(c.hps, {}) : '<p>Rincian belum diisi.</p>';
-    var total = c.hps ? HPS.total(c.hps) : 0;
+    var total = c.hps ? HPS.totalAkhir(c.hps) : 0;
     var body = `
       <h1 class="judul" style="font-size:15pt">HARGA PERKIRAAN SENDIRI (HPS)</h1>
       <p class="tengah" style="margin-top:-6px">${E(pk.nama || '')}<br>${E(s.nama || '')}</p>
       ${c.nomor ? '<p class="nomor">Nomor : ' + E(c.nomor) + '</p>' : ''}
       ${tabel}
-      <p class="kecil">Terbilang : ${E(Fmt.kapital(Fmt.terbilang(c.hps && c.hps.pembulatan ? c.hps.pembulatan : total)))} Rupiah</p>
+      <p class="kecil">Terbilang : ${E(Fmt.kapital(Fmt.terbilang(total)))} Rupiah</p>
       ${ttd(null, { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip })}`;
     return { judul: 'HPS - ' + (pk.nama || ''), html: kop(s) + body };
   };
@@ -287,13 +287,39 @@
 
   T.monev = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
+    var mv = c.monev_items || {};
     var lamp = '';
     if (c.hps && c.hps.rows) {
-      lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
+      var map = c.hps.map || {};
+      /* tabel monev dengan kolom realisasi & keterangan bila ada nilainya */
+      var adaMonev = Object.keys(mv).length > 0;
+      if (adaMonev && map.jumlah != null) {
+        var no = 0, barisHtml = '';
+        c.hps.rows.forEach(function (b, r) {
+          if (r <= c.hps.header) return;
+          var uraianCol = map.uraian != null ? map.uraian : 1;
+          var uraian = b[uraianCol] ? b[uraianCol].v : '';
+          var jumlah = b[map.jumlah] ? HPS.angka(b[map.jumlah].v) : 0;
+          if (!uraian && !jumlah) return;
+          no++;
+          var d = mv['item_' + no] || {};
+          var real = d.realisasi != null ? d.realisasi : jumlah;
+          var ket = d.ket || 'Sesuai';
+          barisHtml += '<tr><td>' + no + '</td><td>' + E(uraian) + '</td><td class="kanan">' + Fmt.num(jumlah, 0) +
+            '</td><td class="kanan">' + Fmt.num(real, 0) + '</td><td>' + E(ket) + '</td></tr>';
+        });
+        lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
+          <table class="doc-tabel"><thead><tr><th>No</th><th>Uraian</th><th>HPS (Rp)</th><th>Realisasi (Rp)</th><th>Keterangan</th></tr></thead><tbody>${barisHtml}</tbody></table>
+          <p class="kecil">Catatan: item dengan keterangan selain "Sesuai" perlu perbaikan/tindak lanjut.</p>
+          <p style="margin-top:14px"><b>Dokumentasi Monitoring dan Evaluasi</b></p>
+          <table class="foto"><tr><td>Foto 1</td><td>Foto 2</td></tr><tr><td>Foto 3</td><td>Foto 4</td></tr></table></div>`;
+      } else {
+        lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
         ${HPS.tabelDokumen(c.hps, { tanpaHarga: true })}
         <p class="kecil">Seluruh volume pekerjaan di atas dikerjakan sesuai kontrak dengan kondisi baik dan sesuai spesifikasi.</p>
         <p style="margin-top:14px"><b>Dokumentasi Monitoring dan Evaluasi</b></p>
         <table class="foto"><tr><td>Foto 1</td><td>Foto 2</td></tr><tr><td>Foto 3</td><td>Foto 4</td></tr></table></div>`;
+      }
     }
     var body = `
       <h1 class="judul garis">BERITA ACARA HASIL MONITORING DAN EVALUASI</h1>
@@ -304,7 +330,7 @@
       <p>Adapun hasil monitoring dan evaluasi adalah sebagaimana terlampir.</p>
       <p>Kesimpulan hasil monitoring dan evaluasi terhadap prestasi pekerjaan yang telah dilaksanakan antara lain :</p>
       <ol class="dasar">
-        <li>Pelaksanaan pekerjaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan;</li>
+        <li>Pelaksanaan pekerjaan telah terealisasi sesuai Surat Pesanan (rincian terlampir);</li>
         <li>Seluruh pekerjaan sudah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik serta siap dimanfaatkan sesuai peruntukannya.</li>
       </ol>
       <p>Demikian Berita Acara Hasil Monitoring dan Evaluasi ini dibuat dalam rangkap yang diperlukan untuk dapat dipergunakan sebagaimana mestinya.</p>

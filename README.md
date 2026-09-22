@@ -11,7 +11,7 @@ Spreadsheet + Google Drive sebagai server, basis data, dan penyimpanan berkas.
 1. Buat Google Spreadsheet baru → **Extensions > Apps Script** → tempel isi `apps-script/Code.gs`.
 2. Jalankan fungsi `setup()` sekali, izinkan aksesnya.
 3. **Deploy > New deployment** → Web app → *Execute as: Me*, *Who has access: Anyone* → salin URL yang berakhir `/exec`.
-4. Buka `index.html`, klik **Ubah alamat server**, tempel URL tadi.
+4. Tempel URL tadi ke `API_URL` di `assets/js/config.js`. (Cukup sekali per deploy; pengguna baru tidak perlu copas manual.)
 5. Masuk dengan `admin` / `admin12345`, lalu **segera ganti sandi**.
 
 Detail tiap langkah, dan cara menghindari galat 404 yang dialami versi sebelumnya, ada di bawah.
@@ -102,7 +102,7 @@ sekali di halaman masuk, dan alamat itu akan tersimpan di perangkat masing-masin
 
 ## 5. Masuk pertama kali
 
-1. Buka aplikasi, klik **Ubah alamat server**, tempel URL `/exec` dari langkah 2, simpan.
+1. Buka aplikasi. Bila `API_URL` sudah diisi di `config.js`, alamat server otomatis terpasang — tidak perlu "Ubah alamat server". (Link ini tetap tersedia bila `API_URL` dikosongkan, untuk kasus deploy manual.)
 2. Masuk dengan **`admin`** / **`admin12345`**.
 3. Buka menu **Pengguna** →
    - **Atur sandi** untuk akun admin ini, ganti dari sandi bawaan.

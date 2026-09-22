@@ -112,10 +112,12 @@
       actions: [{ label: 'Batal' }, {
         label: opsi.simpanLabel || 'Simpan', kind: 'primary', close: false,
         onclick: function (tutup) {
+          var btn = (form.closest('.modal') || document).querySelector('.modal-foot .btn.primary');
           var data = UI.formData(form);
           var wajib = fields.filter(function (f) { return f.required && !String(data[f.name] || '').trim(); });
           if (wajib.length) { UI.toast('Lengkapi: ' + wajib[0].label, 'bad'); return false; }
-          Promise.resolve(simpan(data, nilai)).then(function () { tutup(); }).catch(UI.err);
+          var selesai = UI.busy(btn);
+          Promise.resolve(simpan(data, nilai)).then(function () { selesai(); tutup(); }).catch(function (e) { selesai(); UI.err(e); });
           return false;
         }
       }]
@@ -161,6 +163,27 @@
     return { perlu: perlu, ada: ada, persen: perlu ? Math.round(ada / perlu * 100) : 0 };
   }
   w.hitungLengkap = hitungLengkap;
+
+  var PANGKAT_OPSI = [
+    '— pilih —',
+    'Juru Muda / I/a',
+    'Juru / I/b',
+    'Juru Tingkat I / I/c',
+    'Juru Tingkat I Lanjutan / I/d',
+    'Pengatur Muda / II/a',
+    'Pengatur / II/b',
+    'Pengatur Tingkat I / II/c',
+    'Pengatur Tingkat I Lanjutan / II/d',
+    'Penata Muda / III/a',
+    'Penata / III/b',
+    'Penata Tingkat I / III/c',
+    'Penata Tingkat I Lanjutan / III/d',
+    'Pembina / IV/a',
+    'Pembina Tingkat I / IV/b',
+    'Pembina Utama Muda / IV/c',
+    'Pembina Utama Madya / IV/d',
+    'Pembina Utama / IV/e'
+  ];
 
   var Pages = {};
 
@@ -480,7 +503,7 @@
       formModal(p ? 'Ubah ' + p.nama : 'Pejabat baru', [
         { name: 'nama', label: 'Nama lengkap dan gelar', required: true, wide: true, placeholder: 'Andi Sugiharta, M.Pd.I' },
         { name: 'nip', label: 'NIP', required: true },
-        { name: 'pangkat', label: 'Pangkat / golongan', placeholder: 'Penata Tk. I / III/d' },
+        { name: 'pangkat', label: 'Pangkat / golongan', type: 'select', options: PANGKAT_OPSI.map(function (p) { return { value: p === '— pilih —' ? '' : p, label: p }; }), required: true },
         { name: 'jabatan', label: 'Jabatan', wide: true, placeholder: 'Perencana Ahli Muda' },
         { name: 'satker_id', label: 'Satker (kosongkan bila lintas satker)', type: 'select', wide: true, options: opsiDari(App.state.master.satker) }
       ], p, function (data) {

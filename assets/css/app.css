@@ -67,7 +67,7 @@ small { font-size: 12.5px; }
 
 /* ---------- kerangka ---------- */
 .app { min-height: 100%; }
-#bar { position: fixed; top: 0; left: 0; height: 2px; width: 100%; background: transparent; z-index: 60; }
+#bar { position: fixed; top: 0; left: 0; height: 2px; width: 100%; background: transparent; z-index: 60; pointer-events: none; }
 #bar.on::after {
   content: ""; display: block; height: 2px; width: 40%; background: var(--emas);
   animation: geser 1.1s linear infinite;
@@ -104,7 +104,7 @@ small { font-size: 12.5px; }
 }
 .atas h1 { flex: 1; min-width: 0; }
 .atas .sub { color: var(--tinta2); font-size: 13px; font-weight: 400; display: block; margin-top: 2px; }
-.burger { display: none; }
+.burger { display: none; cursor: pointer; }
 
 /* ---------- komponen dasar ---------- */
 .btn {
@@ -263,14 +263,22 @@ table.kisi td:focus { outline: 2px solid var(--hijau); outline-offset: -2px; }
 .mini { font-size: 12.5px; color: var(--tinta2); }
 hr.pisah { border: 0; border-top: 1px solid var(--garis2); margin: 16px 0; }
 
+/* ---------- indikator proses ---------- */
+.btn.proses { position: relative; opacity: .85; cursor: progress; }
+.spin { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px;
+  border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%;
+  animation: putar .7s linear infinite; }
+.btn:not(.primary):not(.danger):not(.warning) .spin { border-color: rgba(15,107,63,.25); border-top-color: var(--hijau); }
+@keyframes putar { to { transform: rotate(360deg); } }
+
 /* ---------- responsif ---------- */
 @media (max-width: 1080px) { .grid4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 880px) {
   .rail { transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--bayang); }
   body.nav-buka .rail { transform: none; }
-  body.nav-buka::after { content: ""; position: fixed; inset: 0; background: rgba(9, 28, 18, .4); z-index: 35; }
   .isi { margin-left: 0; padding: 0 16px 80px; }
-  .burger { display: inline-flex; }
+  .burger { display: inline-flex; position: relative; z-index: 62; }
+  body.nav-buka::after { content: ""; position: fixed; inset: 0; background: rgba(9, 28, 18, .4); z-index: 35; cursor: pointer; }
   .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
   .masuk { grid-template-columns: 1fr; }
   .masuk-kiri { padding: 28px 22px; }
