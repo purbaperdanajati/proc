@@ -9,7 +9,7 @@ window.CONFIG = {
   /* Tempel URL Web App Apps Script (.../exec) di sini.
      Boleh dibiarkan kosong: saat pertama dibuka, aplikasi meminta URL
      dan menyimpannya di localStorage perangkat. */
-  API_URL: '',
+  API_URL: 'https://script.google.com/macros/s/xxx/exec](https://script.google.com/macros/s/AKfycbzf2BqXM-p1Xj3C6tqY21QSKaW37j91g1XrqL-8gseaSUfrnpuOQCUR_MJiu2C4i_5o/exec',
 
   CACHE_TTL: 5 * 60 * 1000,   // umur cache data master di perangkat
   MAX_UPLOAD_MB: 15,
