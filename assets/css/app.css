@@ -243,6 +243,7 @@ table.kisi td[data-t="num"], table.kisi td[data-t="rp"] { text-align: right; fon
 table.kisi td:focus { outline: 2px solid var(--hijau); outline-offset: -2px; }
 .hps-total { display: flex; gap: 22px; padding: 12px 2px; flex-wrap: wrap; font-size: 14px; }
 .hps-total b { font-size: 17px; }
+.hps-bulat { display: flex; gap: 8px; align-items: center; font-size: 13px; flex-wrap: wrap; }
 .drop { border: 1.5px dashed var(--garis); border-radius: var(--r); padding: 20px; text-align: center; color: var(--tinta2); font-size: 13.5px; }
 .drop.aktif { border-color: var(--hijau); background: var(--hijau-muda); }
 

@@ -235,7 +235,7 @@
             'Belum ada rincian — kolom disiapkan mengikuti format ' + (App.jenis(p.jenis).rab ? 'pemeliharaan gedung' : 'barang/buku/ekstrakomptabel') +
             '. Tempel dari Excel, impor .xlsx, atau ganti lewat tombol "Format baku".'
         });
-        editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function () { berubah = true; }, p.jenis);
+        editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function () { berubah = true; }, p.jenis, p.pagu);
 
         function simpan(evt) {
           var btn = evt && evt.target ? evt.target.closest('button') : null;

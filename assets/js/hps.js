@@ -20,7 +20,7 @@
   }
 
   function kosong(rows, cols) {
-    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, map: {}, judul: '' };
+    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, bulatNilai: 0, pagu: 0, map: {}, judul: '' };
     for (var r = 0; r < (rows || 8); r++) {
       var baris = [];
       for (var c = 0; c < m.cols; c++) baris.push(sel(''));
@@ -200,13 +200,32 @@
   }
 
   /* Hitung nilai pembulatan (selisih) sesuai mode pilihan.
-     mode: 0 = tidak dibulatkan, 100 = ratusan, 1000 = ribuan, dst. */
+     bulatMode:
+       0 = tidak dibulatkan
+       1 = bulatkan ke kelipatan (bulatNilai: 100 / 1000 / 10000, dst.)
+       2 = nominal pembulatan bebas (bulatNilai = selisih langsung)
+       3 = sesuaikan agar total akhir = pagu paket (selisih = pagu - total) */
   function hitungPembulatan(m) {
     var mode = Number(m.bulatMode) || 0;
-    if (!mode) { m.pembulatan = 0; return 0; }
     var total = totalSaja(m);
-    var dibulat = Math.ceil(total / mode) * mode;
-    return dibulat - total;
+    if (!mode || mode === 0) { m.pembulatan = 0; return 0; }
+    if (mode === 2) {
+      var b = Number(m.bulatNilai) || 0;
+      m.pembulatan = b;
+      return b;
+    }
+    if (mode === 3) {
+      var pagu = Number(m.pagu) || 0;
+      var selisih = pagu - total;
+      m.pembulatan = selisih > 0 ? selisih : 0;
+      return m.pembulatan;
+    }
+    /* mode 1: kelipatan */
+    var kelipatan = Number(m.bulatNilai) || 0;
+    if (!kelipatan) { m.pembulatan = 0; return 0; }
+    var dibulat = Math.ceil(total / kelipatan) * kelipatan;
+    m.pembulatan = dibulat - total;
+    return m.pembulatan;
   }
   function totalAkhir(m) {
     var t = totalSaja(m);
@@ -249,7 +268,10 @@
       var total = totalSaja(m);
       var span = Math.max(1, kolomPakai.length - 1);
       html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
-      if (m.pembulatan) html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(m.pembulatan, 0) + '</td></tr>';
+      if (m.pembulatan) {
+        var lbl = Number(m.bulatMode) === 3 ? 'Penyesuaian (pagu)' : 'Pembulatan';
+        html += '<tr><td class="tb" colspan="' + span + '">' + lbl + '</td><td class="tb kanan">' + Fmt.num(m.pembulatan, 0) + '</td></tr>';
+      }
       var akhir = totalAkhir(m);
       html += '<tr><td class="tb" colspan="' + span + '">Total (terbilang)</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
     }
@@ -295,8 +317,14 @@
   }
 
   /* ---------- editor ---------- */
-  function editor(host, model, onChange, jenisHint) {
+  function editor(host, model, onChange, jenisHint, pagu) {
     var m = model && model.rows && model.rows.length ? model : contoh(jenisHint);
+    if (pagu != null) m.pagu = Number(pagu) || 0;
+    /* migrasi: versi lama menyimpan bulatMode sebagai kelipatan langsung (100/1000/10000) */
+    if (Number(m.bulatMode) >= 100) {
+      m.bulatNilai = Number(m.bulatMode) || 0;
+      m.bulatMode = 1;
+    }
     var pilihan = null, jangkar = null;
     var alat = el('div.hps-alat'), bungkus = el('div.hps-wrap'), ringkas = el('div.hps-total');
 
@@ -350,20 +378,68 @@
       ringkas.appendChild(el('span', null, ['Total jumlah: ', el('b', { text: Fmt.rp(t) })]));
       if (m.pembulatan) ringkas.appendChild(el('span.diam', null, 'Pembulatan: +' + Fmt.rp(m.pembulatan)));
       ringkas.appendChild(el('span', null, ['Total akhir: ', el('b', { text: Fmt.rp(akhir) })]));
+      if (m.pagu) ringkas.appendChild(el('span.diam', null, 'Pagu: ' + Fmt.rp(m.pagu)));
+
       /* opsi pembulatan */
-      var bulat = el('label', { style: 'display:flex;align-items:center;gap:6px;font-size:13px' });
-      bulat.appendChild(el('span', { text: 'Pembulatan:' }));
+      var blok = el('div.hps-bulat');
+      blok.appendChild(el('span', { text: 'Pembulatan:' }));
       var sel = el('select.inp', {
         style: 'width:auto;padding:4px 8px;font-size:13px',
-        onchange: function () { m.bulatMode = Number(sel.value); hitungRingkas(); ubah(); }
+        onchange: function () { m.bulatMode = Number(sel.value); m.bulatNilai = 0; hitungRingkas(); ubah(); }
       }, [
-        el('option', { value: '0', selected: !m.bulatMode }, 'Tidak'),
-        el('option', { value: '100', selected: m.bulatMode === 100 }, 'Ratusan (100)'),
-        el('option', { value: '1000', selected: m.bulatMode === 1000 }, 'Ribuan (1.000)'),
-        el('option', { value: '10000', selected: m.bulatMode === 10000 }, 'Dasar 10.000')
+        el('option', { value: '0', selected: !m.bulatMode }, 'Tidak dibulatkan'),
+        el('option', { value: '1', selected: m.bulatMode === 1 }, 'Bulatkan ke kelipatan'),
+        el('option', { value: '2', selected: m.bulatMode === 2 }, 'Nominal bebas'),
+        el('option', { value: '3', selected: m.bulatMode === 3 }, 'Sesuaikan pagu')
       ]);
-      bulat.appendChild(sel);
-      ringkas.appendChild(bulat);
+      blok.appendChild(sel);
+
+      /* input kelipatan (mode 1) */
+      var kelipatan = el('input.inp', {
+        type: 'text', inputmode: 'numeric', placeholder: 'kelipatan',
+        style: 'width:110px;padding:4px 8px;font-size:13px;text-align:right'
+      });
+      kelipatan.value = m.bulatNilai ? Fmt.num(Number(m.bulatNilai) || 0, 0) : '';
+      kelipatan.addEventListener('input', function () {
+        m.bulatNilai = Fmt.parseNum(kelipatan.value);
+      });
+      kelipatan.addEventListener('blur', function () {
+        kelipatan.value = m.bulatNilai ? Fmt.num(Number(m.bulatNilai) || 0, 0) : '';
+        hitungRingkas(); ubah();
+      });
+      kelipatan.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { kelipatan.blur(); }
+      });
+
+      /* input nominal bebas (mode 2) */
+      var bebas = el('input.inp', {
+        type: 'text', inputmode: 'numeric', placeholder: 'nominal pembulatan',
+        style: 'width:130px;padding:4px 8px;font-size:13px;text-align:right'
+      });
+      bebas.value = m.bulatNilai ? Fmt.num(Number(m.bulatNilai) || 0, 0) : '';
+      bebas.addEventListener('input', function () {
+        m.bulatNilai = Fmt.parseNum(bebas.value);
+      });
+      bebas.addEventListener('blur', function () {
+        bebas.value = m.bulatNilai ? Fmt.num(Number(m.bulatNilai) || 0, 0) : '';
+        hitungRingkas(); ubah();
+      });
+      bebas.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { bebas.blur(); }
+      });
+
+      function aturInput() {
+        kelipatan.style.display = m.bulatMode === 1 ? '' : 'none';
+        bebas.style.display = m.bulatMode === 2 ? '' : 'none';
+      }
+      aturInput();
+      blok.appendChild(kelipatan);
+      blok.appendChild(bebas);
+      ringkas.appendChild(blok);
+      if (m.bulatMode === 3 && !m.pagu) {
+        ringkas.appendChild(el('span', { style: 'color:#b3261e', text: 'Pagu belum diisi pada data paket — isi pagu lalu simpan data paket lebih dulu.' }));
+      }
+
       ringkas.appendChild(el('span.diam', null, m.rows.length + ' baris × ' + m.cols + ' kolom'));
     }
 
