@@ -32,7 +32,7 @@
         { name: 'satker_id', label: 'Satuan kerja', type: 'select', required: true, options: B.opsiDari(satker) },
         { name: 'jenis', label: 'Jenis pengadaan', type: 'select', required: true, options: [{ value: '', label: '— pilih —' }].concat(jenisOpsi()) },
         { name: 'nama', label: 'Nama paket', required: true, wide: true, placeholder: 'Pemeliharaan Gedung dan Bangunan' },
-        { name: 'pagu', label: 'Pagu (Rp)', type: 'number', required: true },
+        { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', required: true },
         { name: 'metode', label: 'Metode', type: 'select', options: ['Pengadaan Langsung', 'E-Purchasing', 'Penunjukan Langsung'].map(function (x) { return { value: x, label: x }; }) }
       ], { metode: 'Pengadaan Langsung' }, function (data) {
         data.tahun = App.state.tahun;
@@ -171,8 +171,8 @@
           { name: 'nama', label: 'Nama paket', value: p.nama, wide: true, required: true },
           { name: 'jenis', label: 'Jenis pengadaan', type: 'select', value: p.jenis, options: jenisOpsi() },
           { name: 'status', label: 'Status', type: 'select', value: p.status, options: ['persiapan', 'proses', 'selesai'].map(function (x) { return { value: x, label: Fmt.kapital(x) }; }) },
-          { name: 'pagu', label: 'Pagu (Rp)', type: 'number', value: p.pagu },
-          { name: 'nilai', label: 'Nilai kontrak (Rp)', type: 'number', value: p.nilai },
+          { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', value: p.pagu },
+          { name: 'nilai', label: 'Nilai kontrak (Rp)', format: 'rp', value: p.nilai },
           { name: 'penyedia_id', label: 'Penyedia', type: 'select', value: p.penyedia_id, options: B.opsiDari(App.state.master.penyedia) },
           { name: 'ada_pph', label: 'Ada PPh (faktur & bupot)?', type: 'select', value: p.ada_pph ? 'ya' : 'tidak', options: [{ value: 'tidak', label: 'Tidak' }, { value: 'ya', label: 'Ya' }] },
           { name: 'metode', label: 'Metode pengadaan', value: p.metode },
@@ -195,7 +195,9 @@
           formNo.appendChild(UI.field({ name: 'tgl_' + x.k, label: 'Tanggal ' + x.l, type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) }));
         });
 
-        function simpan() {
+        function simpan(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
           var data = UI.formData(form);
           data.id = p.id;
           data.ada_pph = data.ada_pph === 'ya';
@@ -207,7 +209,7 @@
             meta = m;
             UI.toast('Perubahan tersimpan', 'ok');
             gambarRingkas();
-          }).catch(UI.err);
+          }).catch(function (e) { selesai(); UI.err(e); }).then(selesai);
         }
 
         host2.appendChild(el('div.rapi', null, [
@@ -220,7 +222,7 @@
               el('span.kanan.mini', { text: 'Dipakai otomatis saat dokumen dicetak' })]),
             el('div.badan', null, [formNo])
           ]),
-          el('div.baris', null, [el('button.btn.primary', { onclick: simpan }, 'Simpan perubahan')])
+          el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan perubahan')])
         ]));
       }
 
@@ -232,17 +234,20 @@
             'Belum ada rincian — kolom disiapkan mengikuti format ' + (App.jenis(p.jenis).rab ? 'pemeliharaan gedung' : 'barang/buku/ekstrakomptabel') +
             '. Tempel dari Excel, impor .xlsx, atau ganti lewat tombol "Format baku".'
         });
-        editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function () { berubah = true; }, p.jenis);
+        /* hpsModel di-update live agar pratinjau & dokumen memakai rincian terkini */
+        editorRef = HPS.editor(box, hpsModel || HPS.contoh(p.jenis), function (m) { berubah = true; hpsModel = m; }, p.jenis, p.pagu);
 
-        function simpan() {
+        function simpan(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
           var m = editorRef.model();
-          var total = HPS.total(m);
+          var total = HPS.totalAkhir(m);
           API.call('saveHPS', { paket_id: p.id, payload: JSON.stringify(m), total: total }, { jsonp: false })
             .then(function () {
               hpsModel = m; berubah = false;
               UI.toast('Rincian HPS tersimpan (' + Fmt.rp(total) + ')', 'ok');
               info.textContent = 'Tersimpan ' + Fmt.tanggal(new Date()) + '.';
-            }).catch(UI.err);
+            }).catch(function (e) { selesai(); UI.err(e); }).then(selesai);
         }
         w.onbeforeunload = function () { return berubah ? 'Rincian HPS belum disimpan.' : undefined; };
 
@@ -251,7 +256,7 @@
             el('h2', { text: 'Rincian HPS / RAB' }),
             el('div.kanan.baris', null, [
               el('button.btn.kecil', { onclick: function () { cetakDok('hps'); } }, 'Pratinjau HPS'),
-              el('button.btn.primary.kecil', { onclick: simpan }, 'Simpan rincian')
+              el('button.btn.primary.kecil', { onclick: function (e) { simpan(e); } }, 'Simpan rincian')
             ])
           ]),
           el('div.badan', null, [info, box])
@@ -278,6 +283,10 @@
                       b.sub ? UI.badge(b.sub) : null,
                       b.dari_penyedia ? UI.badge('dari data penyedia', 'info') : null,
                       b.size ? el('span.diam', { text: Fmt.bytes(b.size) }) : null,
+                      b.file_id ? el('button.btn.kecil', {
+                        title: 'Lihat pratinjau berkas (berkas harus dibagikan "Anyone with link")',
+                        onclick: function () { UI.drivePreview(b); }
+                      }, 'Pratinjau') : null,
                       b.id ? el('button.btn.kecil.danger', { onclick: function () {
                         UI.confirm('Hapus berkas "' + b.nama_file + '"?', function () {
                           API.call('removeDok', { id: b.id }, { jsonp: false }).then(function () {

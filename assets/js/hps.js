@@ -20,7 +20,7 @@
   }
 
   function kosong(rows, cols) {
-    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, map: {}, judul: '' };
+    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, bulatNilai: 0, pagu: 0, map: {}, judul: '' };
     for (var r = 0; r < (rows || 8); r++) {
       var baris = [];
       for (var c = 0; c < m.cols; c++) baris.push(sel(''));
@@ -183,7 +183,8 @@
       }
     });
     m.total = total;
-    return total;
+    m.pembulatan = hitungPembulatan(m);
+    return totalAkhir(m);
   }
 
   function totalSaja(m) {
@@ -196,6 +197,40 @@
       var n = angka(c.v); if (n !== null) total += n;
     });
     return total;
+  }
+
+  /* Hitung nilai pembulatan (selisih) sesuai mode pilihan.
+     bulatMode:
+       0 = tidak dibulatkan
+       1 = bulatkan ke kelipatan (bulatNilai: 100 / 1000 / 10000, dst.)
+       2 = nominal pembulatan bebas (bulatNilai = selisih langsung)
+       3 = sesuaikan agar total akhir = pagu paket (selisih = pagu - total) */
+  function hitungPembulatan(m) {
+    var mode = Number(m.bulatMode) || 0;
+    var total = totalSaja(m);
+    if (!mode) { m.pembulatan = 0; return 0; }
+    if (mode === 2) {
+      var b = Number(m.bulatNilai) || 0;
+      m.pembulatan = b;
+      return b;
+    }
+    if (mode === 3) {
+      var pagu = Number(m.pagu) || 0;
+      var selisih = pagu - total;
+      m.pembulatan = selisih > 0 ? selisih : 0;
+      return m.pembulatan;
+    }
+    /* mode 1: kelipatan */
+    var kelipatan = Number(m.bulatNilai) || 0;
+    if (!kelipatan) { m.pembulatan = 0; return 0; }
+    var dibulat = Math.ceil(total / kelipatan) * kelipatan;
+    m.pembulatan = dibulat - total;
+    return m.pembulatan;
+  }
+  function totalAkhir(m) {
+    var t = totalSaja(m);
+    var p = Number(m.pembulatan) || 0;
+    return t + p;
   }
 
   /* ---------- tabel untuk dokumen ---------- */
@@ -231,9 +266,27 @@
     }
     if (!opt.tanpaHarga && m.map && m.map.jumlah != null) {
       var total = totalSaja(m);
+      /* segarkan pembulatan agar footer konsisten dengan total terkini */
+      try { hitungPembulatan(m); } catch (e) { }
+      var mode = Number(m.bulatMode) || 0;
+      var bulat = Number(m.pembulatan) || 0;
+      var akhir = total + bulat;
       var span = Math.max(1, kolomPakai.length - 1);
-      html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
-      if (m.pembulatan) html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(m.pembulatan, 0) + '</td></tr>';
+      if (mode === 0) {
+        /* Tidak dibulatkan: hanya Total Jumlah */
+        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
+      } else if (mode === 2 || mode === 3) {
+        /* Nominal bebas / Sesuaikan pagu: hanya Total Jumlah + Pembulatan (final).
+           Tidak ada baris Penyesuaian (pagu) maupun Jumlah Akhir.
+           Nilai Pembulatan = nilai akhir (= pagu untuk mode 3). */
+        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
+        html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
+      } else {
+        /* mode 1 (kelipatan): Total + Pembulatan (selisih) + Jumlah Akhir */
+        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
+        html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(bulat, 0) + '</td></tr>';
+        html += '<tr><td class="tb" colspan="' + span + '">Jumlah Akhir</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
+      }
     }
     return html + '</tbody></table>';
   }
@@ -277,8 +330,14 @@
   }
 
   /* ---------- editor ---------- */
-  function editor(host, model, onChange, jenisHint) {
+  function editor(host, model, onChange, jenisHint, pagu) {
     var m = model && model.rows && model.rows.length ? model : contoh(jenisHint);
+    if (pagu != null) m.pagu = Number(pagu) || 0;
+    /* migrasi: versi lama menyimpan bulatMode sebagai kelipatan langsung (100/1000/10000) */
+    if (Number(m.bulatMode) >= 100) {
+      m.bulatNilai = Number(m.bulatMode) || 0;
+      m.bulatMode = 1;
+    }
     var pilihan = null, jangkar = null;
     var alat = el('div.hps-alat'), bungkus = el('div.hps-wrap'), ringkas = el('div.hps-total');
 
@@ -325,10 +384,13 @@
     }
 
     function hitungRingkas() {
-      var t = totalSaja(m);
+      hitungPembulatan(m);
+      var t = totalSaja(m), akhir = totalAkhir(m);
       clear(ringkas);
       ringkas.appendChild(el('span', null, ['Total jumlah: ', el('b', { text: Fmt.rp(t) })]));
-      if (m.pembulatan) ringkas.appendChild(el('span.diam', null, 'Pembulatan: ' + Fmt.rp(m.pembulatan)));
+      if (m.pembulatan) ringkas.appendChild(el('span.diam', null,
+        (Number(m.bulatMode) === 3 ? 'Penyesuaian: ' : 'Pembulatan: ') + Fmt.rp(m.pembulatan)));
+      if (akhir !== t) ringkas.appendChild(el('span', null, ['HPS akhir: ', el('b', { text: Fmt.rp(akhir) })]));
       ringkas.appendChild(el('span.diam', null, m.rows.length + ' baris × ' + m.cols + ' kolom'));
     }
 
@@ -502,7 +564,63 @@
     }));
     alat.appendChild(tombol('Hitung', 'Isi kolom HPS dan jumlah lalu totalkan', function () {
       if (m.map.jumlah == null) return UI.toast('Tentukan peran kolom lebih dulu', 'bad');
-      hitung(m); gambar(); ubah(); UI.toast('Total: ' + Fmt.rp(m.total), 'ok');
+      hitung(m); gambar(); ubah();
+      UI.toast('Total: ' + Fmt.rp(m.total) + ' · HPS akhir: ' + Fmt.rp(totalAkhir(m)), 'ok');
+    }));
+    alat.appendChild(tombol('Pembulatan', 'Atur pembulatan total HPS', function () {
+      var kotak = el('div');
+      var info2 = el('p.mini');
+      var totalSekarang = totalSaja(m);
+      var kotakNilai = el('div'), kotakPagu = el('div');
+      function segarkan() {
+        var mode = Number($('select[name="bulatMode"]', kotak).value) || 0;
+        kotakNilai.hidden = mode !== 1 && mode !== 2;
+        kotakPagu.hidden = mode !== 3;
+        var fNilai = $('input[name="bulatNilai"]', kotak);
+        if (fNilai) fNilai.placeholder = mode === 1 ? 'contoh 1000' : 'contoh 50000';
+        m.bulatMode = mode;
+        if (mode === 3) m.pagu = Fmt.parseNum($('input[name="pagu"]', kotak).value) || 0;
+        hitungPembulatan(m);
+        var akhir = totalAkhir(m);
+        info2.textContent = mode === 0 ? 'Total tetap: ' + Fmt.rp(totalSekarang) :
+          'Pembulatan ' + Fmt.rp(m.pembulatan) + ' → HPS akhir ' + Fmt.rp(akhir) +
+          (mode === 3 && !m.pagu ? ' — pagu belum diisi' : '');
+      }
+      var fMode = UI.field({
+        label: 'Opsi pembulatan', name: 'bulatMode', type: 'select',
+        value: String(Number(m.bulatMode) || 0),
+        options: [
+          { value: '0', label: 'Tidak dibulatkan' },
+          { value: '1', label: 'Bulatkan ke kelipatan' },
+          { value: '2', label: 'Nominal pembulatan bebas' },
+          { value: '3', label: 'Sesuaikan dengan pagu' }
+        ],
+        onchange: function () {
+          m.bulatNilai = 0;
+          var f = $('input[name="bulatNilai"]', kotak); if (f) f.value = '';
+          segarkan();
+        }
+      });
+      kotakNilai.appendChild(UI.field({
+        label: 'Kelipatan / nominal (Rp)', name: 'bulatNilai', format: 'rp',
+        value: Number(m.bulatNilai) || 0, placeholder: 'contoh 1000',
+        oninput: function () { m.bulatNilai = Fmt.parseNum(this.value); segarkan(); }
+      }));
+      kotakPagu.appendChild(UI.field({
+        label: 'Pagu paket (Rp)', name: 'pagu', format: 'rp',
+        value: Number(m.pagu) || 0, placeholder: 'sesuai paket',
+        hint: 'Terisi otomatis dari data paket — ubah bila perlu.',
+        oninput: function () { m.pagu = Fmt.parseNum(this.value); segarkan(); }
+      }));
+      kotak.appendChild(fMode); kotak.appendChild(kotakNilai); kotak.appendChild(kotakPagu); kotak.appendChild(info2);
+      segarkan();
+      UI.modal({
+        title: 'Pembulatan HPS', body: kotak,
+        actions: [
+          { label: 'Tanpa pembulatan', onclick: function () { m.bulatMode = 0; m.bulatNilai = 0; hitungPembulatan(m); gambar(); ubah(); } },
+          { label: 'Terapkan', kind: 'primary', onclick: function () { hitungPembulatan(m); gambar(); ubah(); } }
+        ]
+      });
     }));
     alat.appendChild(tombol('Kosongkan', 'Mulai dari tabel kosong dengan format kolom yang sama', function () {
       UI.confirm('Kosongkan seluruh isi kisi? Susunan kolom saat ini akan dipertahankan.', function () {
@@ -526,6 +644,7 @@
 
   w.HPS = {
     kosong: kosong, contoh: contoh, editor: editor, hitung: hitung, total: totalSaja,
+    totalAkhir: totalAkhir, hitungPembulatan: hitungPembulatan,
     tabelDokumen: tabelDokumen, dariHTML: dariHTML, dariTSV: dariTSV, angka: angka
   };
 })(window);

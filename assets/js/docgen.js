@@ -244,13 +244,13 @@
   T.hps = function (c) {
     var s = c.satker || {}, pk = c.paket || {};
     var tabel = c.hps && c.hps.rows ? HPS.tabelDokumen(c.hps, {}) : '<p>Rincian belum diisi.</p>';
-    var total = c.hps ? HPS.total(c.hps) : 0;
+    var total = c.hps ? HPS.totalAkhir(c.hps) : 0;
     var body = `
       <h1 class="judul" style="font-size:15pt">HARGA PERKIRAAN SENDIRI (HPS)</h1>
       <p class="tengah" style="margin-top:-6px">${E(pk.nama || '')}<br>${E(s.nama || '')}</p>
       ${c.nomor ? '<p class="nomor">Nomor : ' + E(c.nomor) + '</p>' : ''}
       ${tabel}
-      <p class="kecil">Terbilang : ${E(Fmt.kapital(Fmt.terbilang(c.hps && c.hps.pembulatan ? c.hps.pembulatan : total)))} Rupiah</p>
+      <p class="kecil">Terbilang : ${E(Fmt.kapital(Fmt.terbilang(total)))} Rupiah</p>
       ${ttd(null, { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip })}`;
     return { judul: 'HPS - ' + (pk.nama || ''), html: kop(s) + body };
   };
@@ -289,8 +289,24 @@
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
     var lamp = '';
     if (c.hps && c.hps.rows) {
+      /* monev per item: baris di bawah header dengan kolom uraian & volume */
+      var h = c.hps, map = h.map || {}, items = [];
+      if (map.uraian != null && map.volume != null) {
+        for (var r = (h.header || 0) + 1; r < h.rows.length; r++) {
+          var row = h.rows[r] || [];
+          var uCell = row[map.uraian], vCell = row[map.volume];
+          if (uCell && uCell.v && vCell && vCell.v) items.push({ uraian: uCell.v, vol: vCell.v });
+        }
+      }
+      var tBody = items.length
+        ? '<table class="doc-tabel"><tbody><tr><td class="tb">No</td><td class="tb">Uraian Pekerjaan</td><td class="tb" style="width:3cm">Volume</td><td class="tb" style="width:3.4cm">Realisasi</td></tr>' +
+          items.map(function (it, i) {
+            return '<tr><td class="tengah">' + (i + 1) + '</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
+              '</td><td class="tengah">' + E(String(it.vol)) + '</td><td class="tengah">100%</td></tr>';
+          }).join('') + '</tbody></table>'
+        : HPS.tabelDokumen(h, { tanpaHarga: true });
       lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
-        ${HPS.tabelDokumen(c.hps, { tanpaHarga: true })}
+        ${tBody}
         <p class="kecil">Seluruh volume pekerjaan di atas dikerjakan sesuai kontrak dengan kondisi baik dan sesuai spesifikasi.</p>
         <p style="margin-top:14px"><b>Dokumentasi Monitoring dan Evaluasi</b></p>
         <table class="foto"><tr><td>Foto 1</td><td>Foto 2</td></tr><tr><td>Foto 3</td><td>Foto 4</td></tr></table></div>`;

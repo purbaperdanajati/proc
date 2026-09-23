@@ -102,6 +102,7 @@
   function formModal(judul, fields, nilai, simpan, opsi) {
     opsi = opsi || {};
     var form = el('form.' + (opsi.kolom === 1 ? 'rapi' : 'grid2'), { onsubmit: function (e) { e.preventDefault(); } });
+    var tombolSimpan = null;
     fields.forEach(function (f) {
       var o = {}; for (var k in f) o[k] = f[k];
       o.value = nilai && nilai[f.name] != null ? nilai[f.name] : (f.value || '');
@@ -115,11 +116,15 @@
           var data = UI.formData(form);
           var wajib = fields.filter(function (f) { return f.required && !String(data[f.name] || '').trim(); });
           if (wajib.length) { UI.toast('Lengkapi: ' + wajib[0].label, 'bad'); return false; }
-          Promise.resolve(simpan(data, nilai)).then(function () { tutup(); }).catch(UI.err);
+          var selesai = UI.busy(tombolSimpan);
+          Promise.resolve(simpan(data, nilai))
+            .then(function () { selesai(); tutup(); })
+            .catch(function (e) { selesai(); UI.err(e); });
           return false;
         }
       }]
     });
+    tombolSimpan = form.closest('.modal') && form.closest('.modal').querySelector('.modal-foot .primary');
     return form;
   }
   function simpanEntitas(entity, row) {
@@ -139,6 +144,20 @@
     return [{ value: '', label: '— pilih —' }].concat((list || []).map(function (r) {
       return { value: r.id, label: label ? label(r) : r.nama };
     }));
+  }
+
+  /* daftar pangkat/golongan ASN untuk form pejabat */
+  var PANGKAT_OPSI = [
+    'Juru Muda / I/a', 'Juru / I/b', 'Juru Tingkat I / I/c', 'Juru Tingkat I / II/a',
+    'Pengatur Muda / II/b', 'Pengatur / II/c', 'Pengatur Tingkat I / II/d',
+    'Penata Muda / III/a', 'Penata Muda Tingkat I / III/b', 'Penata / III/c', 'Penata Tingkat I / III/d',
+    'Pembina / IV/a', 'Pembina Tingkat I / IV/b', 'Utama Muda / IV/c', 'Utama Madya / IV/d', 'Utama / IV/e'
+  ];
+  function opsiPangkat(nilaiSekarang) {
+    var ops = [{ value: '', label: '— pilih —' }].concat(PANGKAT_OPSI.map(function (x) { return { value: x, label: x }; }));
+    /* pertahankan nilai lama yang tidak ada dalam daftar */
+    if (nilaiSekarang && PANGKAT_OPSI.indexOf(nilaiSekarang) < 0) ops.push({ value: nilaiSekarang, label: nilaiSekarang });
+    return ops;
   }
   w.Bantu = { formModal: formModal, simpanEntitas: simpanEntitas, hapusEntitas: hapusEntitas, opsiDari: opsiDari, cariBox: cariBox, cocok: cocok };
 
@@ -480,7 +499,7 @@
       formModal(p ? 'Ubah ' + p.nama : 'Pejabat baru', [
         { name: 'nama', label: 'Nama lengkap dan gelar', required: true, wide: true, placeholder: 'Andi Sugiharta, M.Pd.I' },
         { name: 'nip', label: 'NIP', required: true },
-        { name: 'pangkat', label: 'Pangkat / golongan', placeholder: 'Penata Tk. I / III/d' },
+        { name: 'pangkat', label: 'Pangkat / golongan', type: 'select', options: opsiPangkat(p && p.pangkat) },
         { name: 'jabatan', label: 'Jabatan', wide: true, placeholder: 'Perencana Ahli Muda' },
         { name: 'satker_id', label: 'Satker (kosongkan bila lintas satker)', type: 'select', wide: true, options: opsiDari(App.state.master.satker) }
       ], p, function (data) {

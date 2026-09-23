@@ -243,6 +243,16 @@ table.kisi td[data-t="num"], table.kisi td[data-t="rp"] { text-align: right; fon
 table.kisi td:focus { outline: 2px solid var(--hijau); outline-offset: -2px; }
 .hps-total { display: flex; gap: 22px; padding: 12px 2px; flex-wrap: wrap; font-size: 14px; }
 .hps-total b { font-size: 17px; }
+
+/* indikator proses pada tombol simpan */
+.spin {
+  display: inline-block; width: 13px; height: 13px; vertical-align: -2px;
+  border: 2px solid transparent; border-top-color: currentColor; border-right-color: currentColor;
+  border-radius: 50%;
+  animation: putar .7s linear infinite;
+}
+.btn.proses { opacity: .85; pointer-events: none; }
+@keyframes putar { to { transform: rotate(360deg); } }
 .drop { border: 1.5px dashed var(--garis); border-radius: var(--r); padding: 20px; text-align: center; color: var(--tinta2); font-size: 13.5px; }
 .drop.aktif { border-color: var(--hijau); background: var(--hijau-muda); }
 

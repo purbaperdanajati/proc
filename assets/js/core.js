@@ -56,10 +56,31 @@
     },
     parseNum: function (s) {
       if (typeof s === 'number') return s;
-      if (!s) return 0;
+      if (!s && s !== 0) return 0;
       s = String(s).replace(/[^\d,.\-]/g, '');
-      if (s.indexOf(',') > -1 && s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
-      else s = s.replace(/,/g, '');
+      if (!s || s === '-' || s === '.' || s === ',') return 0;
+      var hasKoma = s.indexOf(',') > -1, hasTitik = s.indexOf('.') > -1;
+      if (hasKoma && hasTitik) {
+        if (s.lastIndexOf(',') > s.lastIndexOf('.')) { s = s.replace(/\./g, '').replace(/,/g, '.'); }
+        else { s = s.replace(/,/g, ''); }
+        var ps = s.split('.');
+        if (ps.length > 2) s = ps.slice(0, -1).join('') + '.' + ps[ps.length - 1];
+      } else if (hasKoma) {
+        if (/^-?\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, '');
+        else {
+          s = s.replace(/,/g, '.');
+          var ks = s.split('.');
+          if (ks.length > 2) s = ks.slice(0, -1).join('') + '.' + ks[ks.length - 1];
+        }
+      } else if (hasTitik) {
+        var nTitik = (s.match(/\./g) || []).length;
+        if (nTitik > 1) { s = s.replace(/\./g, ''); }
+        else if (/^-?\d{1,3}\.\d{3}$/.test(s)) { s = s.replace(/\./g, ''); }
+        else {
+          var bel = (s.split('.')[1] || '');
+          if (bel.length >= 3) s = s.replace(/\./g, '');
+        }
+      }
       var n = parseFloat(s);
       return isNaN(n) ? 0 : n;
     },
@@ -303,12 +324,36 @@
         input = el('textarea', { id: id, name: o.name, rows: o.rows || 3, required: o.required, placeholder: o.placeholder || '' });
         input.value = o.value == null ? '' : o.value;
       } else {
-        input = el('input', {
-          id: id, name: o.name, type: o.type || 'text', required: o.required,
+        var t = o.type || 'text';
+        /* format ribuan otomatis untuk field nominal (o.format === 'rp') */
+        if (o.format === 'rp') t = 'text';
+        var at = {
+          id: id, name: o.name, type: t, required: o.required,
           placeholder: o.placeholder || '', step: o.step, min: o.min, max: o.max,
-          autocomplete: o.autocomplete || 'off'
-        });
-        input.value = o.value == null ? '' : o.value;
+          autocomplete: o.autocomplete || 'off', inputmode: o.format === 'rp' ? 'numeric' : (o.inputmode || undefined)
+        };
+        if (o.attr) for (var a in o.attr) at[a] = o.attr[a];
+        input = el('input', at);
+        input.value = o.value == null ? '' : (o.format === 'rp' ? Fmt.num(Number(o.value) || 0, 0) : o.value);
+        if (o.format === 'rp') {
+          (function (input) {
+            input.style.textAlign = 'right';
+            function sync() { input.dataset.angka = String(Fmt.parseNum(input.value)); }
+            input.addEventListener('input', function () {
+              var awal = input.selectionStart, len = input.value.length;
+              var baru = Fmt.num(Fmt.parseNum(input.value), 0);
+              input.value = baru;
+              sync();
+              var pos = awal + (baru.length - len);
+              try { input.setSelectionRange(pos, pos); } catch (e) { }
+            });
+            input.addEventListener('focus', sync);
+            input.addEventListener('blur', function () {
+              sync();
+              if (!input.value) input.value = '';
+            });
+          })(input);
+        }
       }
       if (o.readonly) input.setAttribute('readonly', 'readonly');
       if (o.oninput) input.addEventListener('input', o.oninput);
@@ -327,9 +372,22 @@
       var o = {};
       Array.prototype.forEach.call(form.elements, function (n) {
         if (!n.name) return;
-        o[n.name] = n.type === 'checkbox' ? n.checked : n.value;
+        var v = n.type === 'checkbox' ? n.checked : n.value;
+        /* field berformat ribuan dikembalikan sebagai angka mentah */
+        if (n.dataset && n.dataset.angka != null) v = String(n.value).trim() === '' ? '' : Fmt.parseNum(n.dataset.angka);
+        o[n.name] = v;
       });
       return o;
+    },
+
+    /* ubah tombol jadi "Menyimpan…" + spinner selama proses; kembalikan fungsi pemulih */
+    busy: function (btn, teks) {
+      if (!btn) return function () { };
+      var asli = btn.textContent, disable = btn.disabled;
+      btn.disabled = true;
+      btn.classList.add('proses');
+      btn.innerHTML = '<span class="spin"></span> ' + esc(teks || 'Menyimpan…');
+      return function () { btn.disabled = disable; btn.classList.remove('proses'); btn.textContent = asli; };
     },
 
     empty: function (judul, pesan, aksi) {
@@ -374,6 +432,37 @@
       });
       tbody.appendChild(frag);
       return el('div.tabel-wrap', null, [el('table.tabel', null, [thead, tbody])]);
+    },
+
+    /* pratinjau berkas Google Drive dalam modal iframe */
+    drivePreview: function (file) {
+      if (!file) return;
+      var fid = file.file_id || file.id;
+      if (!fid) return UI.toast('Berkas tidak memiliki ID Drive', 'bad');
+      var mime = (file.mime || file.nama_file || '').toLowerCase();
+      var src;
+      /* gambar langsung tampil; pdf & dokumen lain memakai pratinjau Drive */
+      if (/image\/(png|jpe?g|gif|webp)/.test(mime) || /\.(png|jpe?g|gif|webp)$/.test(mime)) {
+        src = 'https://drive.google.com/thumbnail?id=' + fid + '&sz=w1200';
+      } else {
+        src = 'https://drive.google.com/file/d/' + fid + '/preview';
+      }
+      var box = el('div');
+      box.style.cssText = 'position:relative;padding-top:70%;background:#f2f5f0;border-radius:8px;overflow:hidden';
+      var ifr = el('iframe', {
+        src: src, style: 'position:absolute;inset:0;width:100%;height:100%;border:0',
+        allow: 'autoplay', loading: 'lazy'
+      });
+      box.appendChild(ifr);
+      var modal = UI.modal({
+        title: 'Pratinjau: ' + (file.nama_file || file.nama || 'berkas'),
+        body: box,
+        actions: [
+          { label: 'Buka di Drive', onclick: function () { window.open('https://drive.google.com/file/d/' + fid + '/view', '_blank'); return false; } },
+          { label: 'Tutup', kind: 'primary' }
+        ]
+      });
+      return modal;
     }
   };
 
