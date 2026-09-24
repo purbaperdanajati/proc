@@ -20,7 +20,7 @@
   }
 
   function kosong(rows, cols) {
-    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, bulatNilai: 0, pagu: 0, map: {}, judul: '' };
+    var m = { cols: cols || 6, rows: [], header: 0, ppn: 11, pembulatan: 0, bulatMode: 0, bulatNilai: 0, bulatArah: 'atas', pagu: 0, map: {}, judul: '' };
     for (var r = 0; r < (rows || 8); r++) {
       var baris = [];
       for (var c = 0; c < m.cols; c++) baris.push(sel(''));
@@ -199,31 +199,35 @@
     return total;
   }
 
-  /* Hitung nilai pembulatan (selisih) sesuai mode pilihan.
+  /* Hitung nilai pembulatan (selisih) sesuai mode pilihan. Untuk SEMUA mode di bawah,
+     m.pembulatan adalah SELISIH (total -> nilai akhir); nilai akhir = total + pembulatan.
      bulatMode:
        0 = tidak dibulatkan
-       1 = bulatkan ke kelipatan (bulatNilai: 100 / 1000 / 10000, dst.)
-       2 = nominal pembulatan bebas (bulatNilai = selisih langsung)
-       3 = sesuaikan agar total akhir = pagu paket (selisih = pagu - total) */
+       1 = bulatkan ke kelipatan (bulatNilai: 100 / 1000 / 10000, dst.;
+           arah: bulatArah 'atas' (default, ceil) atau 'bawah' (floor))
+       2 = nominal pembulatan bebas — bulatNilai adalah NILAI AKHIR yang diinginkan
+           (bukan selisih), jadi pembulatan = bulatNilai - total
+       3 = sesuaikan agar total akhir = pagu paket, selalu (tanpa syarat pagu > total) —
+           pembulatan = pagu - total */
   function hitungPembulatan(m) {
     var mode = Number(m.bulatMode) || 0;
     var total = totalSaja(m);
     if (!mode) { m.pembulatan = 0; return 0; }
     if (mode === 2) {
-      var b = Number(m.bulatNilai) || 0;
-      m.pembulatan = b;
-      return b;
+      var target2 = Number(m.bulatNilai) || 0;
+      m.pembulatan = target2 - total;
+      return m.pembulatan;
     }
     if (mode === 3) {
       var pagu = Number(m.pagu) || 0;
-      var selisih = pagu - total;
-      m.pembulatan = selisih > 0 ? selisih : 0;
+      m.pembulatan = pagu - total;
       return m.pembulatan;
     }
-    /* mode 1: kelipatan */
+    /* mode 1: kelipatan, dibulatkan ke atas (ceil) atau ke bawah (floor) sesuai bulatArah */
     var kelipatan = Number(m.bulatNilai) || 0;
     if (!kelipatan) { m.pembulatan = 0; return 0; }
-    var dibulat = Math.ceil(total / kelipatan) * kelipatan;
+    var keBawah = m.bulatArah === 'bawah';
+    var dibulat = (keBawah ? Math.floor(total / kelipatan) : Math.ceil(total / kelipatan)) * kelipatan;
     m.pembulatan = dibulat - total;
     return m.pembulatan;
   }
@@ -272,20 +276,12 @@
       var bulat = Number(m.pembulatan) || 0;
       var akhir = total + bulat;
       var span = Math.max(1, kolomPakai.length - 1);
-      if (mode === 0) {
-        /* Tidak dibulatkan: hanya Total Jumlah */
-        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
-      } else if (mode === 2 || mode === 3) {
-        /* Nominal bebas / Sesuaikan pagu: hanya Total Jumlah + Pembulatan (final).
-           Tidak ada baris Penyesuaian (pagu) maupun Jumlah Akhir.
-           Nilai Pembulatan = nilai akhir (= pagu untuk mode 3). */
-        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
+      html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
+      if (mode !== 0) {
+        /* Semua mode pembulatan (kelipatan / nominal bebas / sesuaikan pagu): baris
+           "Pembulatan" menampilkan NILAI AKHIR (Total Jumlah setelah dibulatkan/
+           disesuaikan) — bukan selisihnya. Tidak pernah ada baris Jumlah Akhir. */
         html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
-      } else {
-        /* mode 1 (kelipatan): Total + Pembulatan (selisih) + Jumlah Akhir */
-        html += '<tr><td class="tb" colspan="' + span + '">Total Jumlah</td><td class="tb kanan">' + Fmt.num(total, 0) + '</td></tr>';
-        html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(bulat, 0) + '</td></tr>';
-        html += '<tr><td class="tb" colspan="' + span + '">Jumlah Akhir</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
       }
     }
     return html + '</tbody></table>';
@@ -571,14 +567,19 @@
       var kotak = el('div');
       var info2 = el('p.mini');
       var totalSekarang = totalSaja(m);
-      var kotakNilai = el('div'), kotakPagu = el('div');
+      var kotakNilai = el('div'), kotakArah = el('div'), kotakPagu = el('div');
       function segarkan() {
         var mode = Number($('select[name="bulatMode"]', kotak).value) || 0;
         kotakNilai.hidden = mode !== 1 && mode !== 2;
+        kotakArah.hidden = mode !== 1;
         kotakPagu.hidden = mode !== 3;
         var fNilai = $('input[name="bulatNilai"]', kotak);
-        if (fNilai) fNilai.placeholder = mode === 1 ? 'contoh 1000' : 'contoh 50000';
+        if (fNilai) fNilai.placeholder = mode === 1 ? 'contoh 1000' : 'contoh 50000000';
+        var lblNilai = kotakNilai.querySelector('.lbl');
+        if (lblNilai) lblNilai.textContent = mode === 1 ? 'Kelipatan (Rp)' : 'Nilai HPS akhir (Rp)';
         m.bulatMode = mode;
+        var fArah = $('select[name="bulatArah"]', kotak);
+        if (fArah) m.bulatArah = fArah.value;
         if (mode === 3) m.pagu = Fmt.parseNum($('input[name="pagu"]', kotak).value) || 0;
         hitungPembulatan(m);
         var akhir = totalAkhir(m);
@@ -606,13 +607,23 @@
         value: Number(m.bulatNilai) || 0, placeholder: 'contoh 1000',
         oninput: function () { m.bulatNilai = Fmt.parseNum(this.value); segarkan(); }
       }));
+      kotakArah.appendChild(UI.field({
+        label: 'Arah pembulatan', name: 'bulatArah', type: 'select',
+        value: m.bulatArah === 'bawah' ? 'bawah' : 'atas',
+        options: [
+          { value: 'atas', label: 'Ke atas' },
+          { value: 'bawah', label: 'Ke bawah' }
+        ],
+        hint: 'Ke atas menambah selisih ke total, ke bawah mengurangi.',
+        onchange: segarkan
+      }));
       kotakPagu.appendChild(UI.field({
         label: 'Pagu paket (Rp)', name: 'pagu', format: 'rp',
         value: Number(m.pagu) || 0, placeholder: 'sesuai paket',
         hint: 'Terisi otomatis dari data paket — ubah bila perlu.',
         oninput: function () { m.pagu = Fmt.parseNum(this.value); segarkan(); }
       }));
-      kotak.appendChild(fMode); kotak.appendChild(kotakNilai); kotak.appendChild(kotakPagu); kotak.appendChild(info2);
+      kotak.appendChild(fMode); kotak.appendChild(kotakNilai); kotak.appendChild(kotakArah); kotak.appendChild(kotakPagu); kotak.appendChild(info2);
       segarkan();
       UI.modal({
         title: 'Pembulatan HPS', body: kotak,

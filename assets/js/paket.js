@@ -333,6 +333,10 @@
         var pk = {};
         for (var k in p) pk[k] = p[k];
         pk.meta = m;
+        /* selaraskan pagu HPS dengan Pagu paket terkini (tab Data paket, f_pagu) —
+           hpsModel bisa membawa pagu lama bila tab HPS/RAB belum dibuka ulang
+           setelah Pagu diubah, sehingga mode "Sesuaikan dengan pagu" jadi memakai nilai basi. */
+        if (hpsModel) hpsModel.pagu = Number(p.pagu) || 0;
         return {
           satker: s, paket: pk, tahun: p.tahun, jenis: App.jenis(p.jenis),
           kpa: App.pejabat(p.kpa_id || tugas.kpa_id), ppk: App.pejabat(p.ppk_id || tugas.ppk_id),
