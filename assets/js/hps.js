@@ -237,6 +237,27 @@
     return t + p;
   }
 
+  /* ---------- daftar item ringkas (dipakai tab Menilai/Monev & dokumen Monev) ----------
+     Mengembalikan [{ uraian, volume, satuan }, ...] sesuai urutan baris HPS, dilewati
+     bila kolom "uraian" belum dipetakan atau baris tanpa uraian (baris kosong/sisipan). */
+  function daftarItem(m) {
+    var out = [];
+    if (!m || !m.rows || !m.map || m.map.uraian == null) return out;
+    for (var r = (m.header || 0) + 1; r < m.rows.length; r++) {
+      var baris = m.rows[r] || [];
+      var uCell = baris[m.map.uraian];
+      if (!uCell || !String(uCell.v || '').trim()) continue;
+      var vCell = m.map.volume != null ? baris[m.map.volume] : null;
+      var sCell = m.map.satuan != null ? baris[m.map.satuan] : null;
+      out.push({
+        uraian: String(uCell.v).trim(),
+        volume: vCell && vCell.v != null ? String(vCell.v).trim() : '',
+        satuan: sCell && sCell.v != null ? String(sCell.v).trim() : ''
+      });
+    }
+    return out;
+  }
+
   /* ---------- tabel untuk dokumen ---------- */
   function tabelDokumen(m, opt) {
     opt = opt || {};
@@ -656,6 +677,6 @@
   w.HPS = {
     kosong: kosong, contoh: contoh, editor: editor, hitung: hitung, total: totalSaja,
     totalAkhir: totalAkhir, hitungPembulatan: hitungPembulatan,
-    tabelDokumen: tabelDokumen, dariHTML: dariHTML, dariTSV: dariTSV, angka: angka
+    tabelDokumen: tabelDokumen, daftarItem: daftarItem, dariHTML: dariHTML, dariTSV: dariTSV, angka: angka
   };
 })(window);

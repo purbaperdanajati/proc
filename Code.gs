@@ -34,6 +34,7 @@ var SKEMA = {
   Dokumen:   ['id', 'paket_id', 'kode', 'sub', 'nama_file', 'file_id', 'url', 'mime', 'size',
               'keterangan', 'uploaded_by', 'uploaded_at'],
   HPS:       ['id', 'paket_id', 'part', 'payload', 'total', 'updated_at'],
+  Monev:     ['id', 'paket_id', 'payload', 'updated_at'],
   Log:       ['ts', 'user', 'aksi', 'detail']
 };
 
@@ -399,9 +400,10 @@ var AKSI = {
     bolehSatker(u, p.satker_id, p.tahun);
     var dok = bacaTabel('Dokumen').filter(function (x) { return String(x.paket_id) === String(p.id); });
     var hps = bacaHPS(p.id);
+    var monev = bacaMonev(p.id);
     var out = bersihBaris(p);
     out.ada_pph = bool(p.ada_pph);
-    return { paket: out, dokumen: bersih(dok), hps: hps };
+    return { paket: out, dokumen: bersih(dok), hps: hps, monev: monev };
   },
 
   savePaket: function (d, u) {
@@ -422,6 +424,12 @@ var AKSI = {
       .forEach(function (x) { hapusBaris('Dokumen', x.id); });
     bacaTabel('HPS').filter(function (x) { return String(x.paket_id) === String(p.id); })
       .forEach(function (x) { hapusBaris('HPS', x.id); });
+    /* try/catch: lembar "Monev" mungkin belum ada bila admin belum menjalankan ulang
+       setup() setelah pembaruan — jangan sampai penghapusan paket lama ikut gagal. */
+    try {
+      bacaTabel('Monev').filter(function (x) { return String(x.paket_id) === String(p.id); })
+        .forEach(function (x) { hapusBaris('Monev', x.id); });
+    } catch (e) { }
     hapusBaris('Paket', p.id);
     catat(u.id, 'hapus-paket', p.nama);
     return true;
@@ -441,6 +449,19 @@ var AKSI = {
         payload: teks.substr(i, maks), total: d.total || 0, updated_at: new Date()
       });
     }
+    return true;
+  },
+
+  /* ---------- monev (penilaian realisasi per item + kesimpulan) ---------- */
+  saveMonev: function (d, u) {
+    var p = cariBaris('Paket', d.paket_id);
+    if (!p) throw new Error('Paket tidak ditemukan.');
+    bolehSatker(u, p.satker_id, p.tahun);
+    bacaTabel('Monev').filter(function (x) { return String(x.paket_id) === String(d.paket_id); })
+      .forEach(function (x) { hapusBaris('Monev', x.id); });
+    tulisBaris('Monev', {
+      id: idBaru('M'), paket_id: d.paket_id, payload: String(d.payload || ''), updated_at: new Date()
+    });
     return true;
   },
 
@@ -548,6 +569,18 @@ function bacaHPS(paketId) {
   if (!bagian.length) return null;
   var teks = bagian.map(function (x) { return x.payload; }).join('');
   try { return JSON.parse(teks); } catch (e) { return null; }
+}
+
+function bacaMonev(paketId) {
+  /* Bila admin belum menjalankan ulang setup() setelah pembaruan (lembar "Monev" belum
+     ada), jangan sampai seluruh halaman detail paket ikut gagal dimuat — anggap saja
+     belum ada penilaian tersimpan. Aksi saveMonev tetap akan memberi pesan error yang
+     jelas ("Jalankan setup()") saat admin benar-benar mencoba menyimpan penilaian. */
+  var baris;
+  try { baris = bacaTabel('Monev').filter(function (x) { return String(x.paket_id) === String(paketId); })[0]; }
+  catch (e) { return null; }
+  if (!baris) return null;
+  try { return JSON.parse(baris.payload); } catch (e) { return null; }
 }
 
 function bersih(rows) { return rows.map(bersihBaris); }

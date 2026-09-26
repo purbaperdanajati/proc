@@ -339,6 +339,11 @@
           (function (input) {
             input.style.textAlign = 'right';
             function sync() { input.dataset.angka = String(Fmt.parseNum(input.value)); }
+            sync(); /* penting: isi dataset.angka SEKARANG juga (bukan cuma saat difokus/diketik),
+                       supaya UI.formData tetap membaca angka mentah yang benar walau field ini
+                       tidak pernah disentuh user sama sekali dalam sesi edit ini — sebelum ini,
+                       field 'rp' yang tak tersentuh membuat formData mengirim teks berformat titik
+                       ("50.000.000") alih-alih angka, sehingga nilainya salah/hilang saat disimpan. */
             input.addEventListener('input', function () {
               var awal = input.selectionStart, len = input.value.length;
               var baru = Fmt.num(Fmt.parseNum(input.value), 0);

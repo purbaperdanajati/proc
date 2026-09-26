@@ -28,6 +28,11 @@ window.CONFIG = {
     { id: 'buku',        nama: 'Buku',                                             rab: false, sumber: 'DIPA (BOS)' }
   ],
 
+  /* opsi dropdown "Metode pengadaan" pada tab Data paket. Sesuaikan daftar ini bila
+     satker Anda memakai istilah/metode lain — pilihan "Lainnya" tetap tersedia otomatis
+     untuk metode di luar daftar (termasuk data lama yang sudah tersimpan). */
+  METODE_PENGADAAN: ['Pengadaan Langsung', 'Penunjukan Langsung', 'E-Purchasing', 'Tender Cepat', 'Tender', 'Swakelola'],
+
   /* 13 syarat dokumen. generate = template cetak lokal yang tersedia.
      multi = boleh banyak berkas. bersyarat = hanya wajib bila kondisi terpenuhi. */
   DOKUMEN: [

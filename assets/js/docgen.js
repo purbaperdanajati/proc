@@ -68,7 +68,8 @@
   ol.huruf { list-style:lower-alpha; margin:0; padding-left:20px; }
   .lampiran { page-break-before:always; }
   .foto { width:100%; border-collapse:collapse; margin-top:10px; }
-  .foto td { border:1px solid #000; height:5.2cm; width:50%; text-align:center; color:#888; font-size:9pt; }
+  .foto td { border:1px solid #000; height:5.2cm; width:50%; text-align:center; color:#888; font-size:9pt; padding:4px; }
+  .foto td img { max-width:100%; max-height:5cm; object-fit:cover; }
   .kecil { font-size:9.5pt; }
   .spasi { height:10px; }
   `;
@@ -287,29 +288,56 @@
 
   T.monev = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
+    var mv = c.monev || {};
+    /* kesimpulan: pakai catatan hasil tab "Menilai (Monev)" bila sudah diisi; kalau belum
+       pernah diisi (paket lama / belum dinilai), pakai kalimat baku seperti sebelumnya. */
+    var kesimpulan = String(mv.catatan || '').trim() ||
+      'Pelaksanaan pekerjaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan. Seluruh pekerjaan sudah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik serta siap dimanfaatkan sesuai peruntukannya.';
     var lamp = '';
     if (c.hps && c.hps.rows) {
-      /* monev per item: baris di bawah header dengan kolom uraian & volume */
-      var h = c.hps, map = h.map || {}, items = [];
-      if (map.uraian != null && map.volume != null) {
-        for (var r = (h.header || 0) + 1; r < h.rows.length; r++) {
-          var row = h.rows[r] || [];
-          var uCell = row[map.uraian], vCell = row[map.volume];
-          if (uCell && uCell.v && vCell && vCell.v) items.push({ uraian: uCell.v, vol: vCell.v });
-        }
-      }
+      var items = HPS.daftarItem(c.hps);
+      var mvItems = mv.items || [];
+
+      /* tabel rencana vs realisasi per item, sesuai hasil penilaian di tab Monev */
       var tBody = items.length
-        ? '<table class="doc-tabel"><tbody><tr><td class="tb">No</td><td class="tb">Uraian Pekerjaan</td><td class="tb" style="width:3cm">Volume</td><td class="tb" style="width:3.4cm">Realisasi</td></tr>' +
+        ? '<table class="doc-tabel"><tbody><tr><td class="tb">No</td><td class="tb">Uraian Pekerjaan</td>' +
+          '<td class="tb" style="width:2.6cm">Rencana</td><td class="tb" style="width:2.6cm">Realisasi</td>' +
+          '<td class="tb" style="width:3.6cm">Keterangan</td></tr>' +
           items.map(function (it, i) {
+            var d = mvItems[i] || {};
+            var rencana = (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '');
+            var realisasi = d.realisasi != null && d.realisasi !== '' ? String(d.realisasi) : String(it.volume || '');
             return '<tr><td class="tengah">' + (i + 1) + '</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
-              '</td><td class="tengah">' + E(String(it.vol)) + '</td><td class="tengah">100%</td></tr>';
+              '</td><td class="tengah">' + E(rencana) +
+              '</td><td class="tengah">' + E((realisasi || '-') + (realisasi && it.satuan ? ' ' + it.satuan : '')) +
+              '</td><td>' + E(d.keterangan || '-') + '</td></tr>';
           }).join('') + '</tbody></table>'
-        : HPS.tabelDokumen(h, { tanpaHarga: true });
+        : HPS.tabelDokumen(c.hps, { tanpaHarga: true });
+
+      /* dokumentasi foto: berkas #13 bertipe gambar yang diunggah lewat tab Monev / Berkas */
+      var fotoTag = function (f) {
+        return '<img src="https://drive.google.com/thumbnail?id=' + E(f.file_id) + '&sz=w900" alt="' + E(f.nama_file || 'Foto dokumentasi') + '">';
+      };
+      var semuaFoto = (c.dokumen || []).filter(function (x) { return String(x.kode) === '13' && /^image\//i.test(x.mime || ''); });
+      var fotoTampil = semuaFoto.slice(-6);
+      var fotoHtml;
+      if (fotoTampil.length) {
+        var barisFoto = [];
+        for (var i2 = 0; i2 < fotoTampil.length; i2 += 2) {
+          barisFoto.push('<tr><td>' + fotoTag(fotoTampil[i2]) + '</td><td>' +
+            (fotoTampil[i2 + 1] ? fotoTag(fotoTampil[i2 + 1]) : '') + '</td></tr>');
+        }
+        fotoHtml = '<table class="foto">' + barisFoto.join('') + '</table>' +
+          (semuaFoto.length > fotoTampil.length
+            ? '<p class="kecil">+' + (semuaFoto.length - fotoTampil.length) + ' foto lainnya, lihat tab Berkas (13).</p>' : '');
+      } else {
+        fotoHtml = '<table class="foto"><tr><td colspan="2">Belum ada dokumentasi foto diunggah</td></tr></table>';
+      }
+
       lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
         ${tBody}
-        <p class="kecil">Seluruh volume pekerjaan di atas dikerjakan sesuai kontrak dengan kondisi baik dan sesuai spesifikasi.</p>
         <p style="margin-top:14px"><b>Dokumentasi Monitoring dan Evaluasi</b></p>
-        <table class="foto"><tr><td>Foto 1</td><td>Foto 2</td></tr><tr><td>Foto 3</td><td>Foto 4</td></tr></table></div>`;
+        ${fotoHtml}</div>`;
     }
     var body = `
       <h1 class="judul garis">BERITA ACARA HASIL MONITORING DAN EVALUASI</h1>
@@ -318,11 +346,8 @@
       <p>Berdasarkan antara lain :</p>
       <ol class="dasar"><li>Kontrak/Surat Pesanan Nomor : ${E(c.no_sp || '..........')} tanggal ${E(tglPanjang(c.tgl_sp || c.tanggal))}</li></ol>
       <p>Adapun hasil monitoring dan evaluasi adalah sebagaimana terlampir.</p>
-      <p>Kesimpulan hasil monitoring dan evaluasi terhadap prestasi pekerjaan yang telah dilaksanakan antara lain :</p>
-      <ol class="dasar">
-        <li>Pelaksanaan pekerjaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan;</li>
-        <li>Seluruh pekerjaan sudah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik serta siap dimanfaatkan sesuai peruntukannya.</li>
-      </ol>
+      <p>Kesimpulan hasil monitoring dan evaluasi terhadap prestasi pekerjaan yang telah dilaksanakan adalah sebagai berikut :</p>
+      <p style="text-align:justify">${E(kesimpulan).replace(/\n/g, '<br>')}</p>
       <p>Demikian Berita Acara Hasil Monitoring dan Evaluasi ini dibuat dalam rangkap yang diperlukan untuk dapat dipergunakan sebagaimana mestinya.</p>
       ${ttd(null, { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip })}
       ${lamp}`;
@@ -345,20 +370,25 @@
 
   var Doc = {
     daftar: function () { return Object.keys(T); },
-    pratinjau: function (id, ctx) {
+    /* opsi.simpanKeBerkas (opsional): callback disebut saat tombol "Simpan ke berkas"
+       diklik, ditambahkan ke aksi modal (di .modal-foot) hanya bila diberikan — supaya
+       docgen.js tetap generik, logika unggah-ke-Drive-nya sendiri tetap di paket.js. */
+    pratinjau: function (id, ctx, opsi) {
+      opsi = opsi || {};
       return siapkan(id, ctx).then(function (d) {
         var frame = el('iframe', {
           style: 'width:100%;height:68vh;border:1px solid var(--garis);border-radius:6px;background:#fff'
         });
         var box = el('div', null, [frame]);
-        UI.modal({
-          title: d.judul, body: box,
-          actions: [
-            { label: 'Tutup' },
-            { label: 'Unduh .doc', onclick: function () { Doc.unduh(id, ctx); return false; }, close: false },
-            { label: 'Cetak / simpan PDF', kind: 'primary', onclick: function () { frame.contentWindow.focus(); frame.contentWindow.print(); return false; }, close: false }
-          ]
-        });
+        var aksi = [
+          { label: 'Tutup' },
+          { label: 'Unduh .doc', onclick: function () { Doc.unduh(id, ctx); return false; }, close: false },
+          { label: 'Cetak / simpan PDF', onclick: function () { frame.contentWindow.focus(); frame.contentWindow.print(); return false; }, close: false }
+        ];
+        if (opsi.simpanKeBerkas) {
+          aksi.push({ label: 'Simpan ke berkas', kind: 'primary', onclick: function () { opsi.simpanKeBerkas(); return false; }, close: false });
+        }
+        UI.modal({ title: d.judul, body: box, actions: aksi });
         var doc = frame.contentDocument;
         doc.open(); doc.write(bungkus(d)); doc.close();
         return d;

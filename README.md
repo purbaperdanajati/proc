@@ -121,8 +121,9 @@ sekali di halaman masuk, dan alamat itu akan tersimpan di perangkat masing-masin
 | 5 | Buat paket pengadaan per satker: pilih jenis, isi pagu | **Paket pengadaan** |
 | 6 | Isi rincian HPS/RAB — tempel dari Excel, impor `.xlsx`, atau ketik manual | Tab **HPS/RAB** pada detail paket |
 | 7 | Unggah 13 dokumen wajib satu per satu | Tab **Berkas (13)** |
-| 8 | Isi nomor & tanggal surat, lalu cetak KAK/HPS/SK/BAST/Monev | Tab **Data paket** dan **Cetak dokumen** |
-| 9 | Pantau pita 13-segmen di Beranda — hijau penuh berarti paket itu *complete* secara dokumen | **Beranda** |
+| 8 | Setelah pekerjaan selesai: nilai realisasi tiap item HPS (jumlah diterima vs. direncanakan, keterangan bila ada selisih) dan unggah foto bukti/dokumentasi | Tab **Menilai (Monev)** |
+| 9 | Isi nomor & tanggal surat pada tab **Data paket**, lalu klik **Pratinjau** di sebelah nomor surat yang bersangkutan untuk cetak KAK/HPS/SK/BAST/Monev | Tab **Data paket** |
+| 10 | Pantau pita 13-segmen di Beranda — hijau penuh berarti paket itu *complete* secara dokumen | **Beranda** |
 
 ---
 
@@ -134,16 +135,18 @@ setelah, multi-berkas) · BAST Inproc · BAST Manual · SPM · SP2D · Faktur & 
 ditandai *Ada PPh*) · Company profile (otomatis terisi dari data Penyedia) · Hasil Monev &
 dokumentasinya.
 
-### 6 dokumen yang bisa dibuat otomatis (tab Cetak dokumen)
+### 6 dokumen yang bisa dibuat otomatis (tab Data paket)
 KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev — masing-masing punya field
-nomor dan tanggal surat sendiri di tab **Data paket**. Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu
-terisi otomatis dari data Satker, Penugasan, dan Paket.
+nomor dan tanggal surat sendiri di tab **Data paket**, tepat di sebelahnya ada tombol **Pratinjau**
+(nonaktif dulu simpan perubahan bila nomor baru saja diubah, agar dokumen memuat nomor terbaru).
+Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu terisi otomatis dari data Satker, Penugasan, dan Paket.
 
 **Seluruh dokumen dirakit di peramban pengguna** (`docgen.js`) — server Apps Script tidak pernah
-menyusun dokumen, hanya menyimpan data dan berkas. Tiga pilihan keluaran tersedia: **Pratinjau**,
-**Cetak / Simpan PDF** (lewat dialog cetak peramban), **Unduh .doc** (bisa dibuka dan diedit lagi di
-Word), dan **Simpan ke berkas** (langsung mengunggah hasilnya sebagai salah satu dari 13 dokumen
-paket).
+menyusun dokumen, hanya menyimpan data dan berkas. Klik **Pratinjau** membuka jendela pop-up berisi
+dokumennya beserta tiga pilihan aksi di bagian bawah (`.modal-foot`): **Cetak / simpan PDF** (lewat
+dialog cetak peramban), **Unduh .doc** (bisa dibuka dan diedit lagi di Word), dan **Simpan ke berkas**
+(langsung mengunggah hasilnya sebagai salah satu dari 13 dokumen paket). Tombol Pratinjau yang sama
+juga muncul di tab **HPS / RAB** dan di tab **Berkas (13)** (kolom "Buat") untuk dokumen yang relevan.
 
 ### Format kolom HPS/RAB
 Kolom kisi HPS otomatis mengikuti jenis pengadaan, dan bisa ditukar kapan pun lewat tombol
@@ -157,6 +160,28 @@ Kolom kisi HPS otomatis mengikuti jenis pengadaan, dan bisa ditukar kapan pun le
 Menempel langsung dari Excel (termasuk sel gabung) atau mengimpor `.xlsx` akan menimpa susunan ini
 dengan struktur asli berkas sumbernya; peran tiap kolom (mana yang volume, harga, jumlah) bisa
 disesuaikan lewat tombol **"Peran kolom"** bila deteksi otomatisnya kurang tepat.
+
+### Menilai (Monev)
+Tab ini menampilkan tiap baris uraian pada HPS/RAB sebagai satu item yang bisa dinilai: field
+**Realisasi** (terisi otomatis sama dengan Volume rencana, tinggal diubah bila ada selisih — mis.
+dipesan 4 unit TV, yang datang 3 unit) dan **Keterangan** (opsional, alasan selisihnya). Tombol
+**"Buat draf otomatis"** merangkai seluruh selisih itu menjadi paragraf kesimpulan yang bisa disunting
+bebas sebelum disimpan. Foto bukti/dokumentasi diunggah langsung dari tab ini — boleh pilih beberapa
+berkas sekaligus dari galeri/penjelajah berkas, diunggah berurutan satu per satu dengan keterangan
+kemajuan per berkas — (disimpan sebagai salah satu berkas dokumen **#13** di Drive, sama seperti lewat
+tab Berkas) dan tampil sebagai thumbnail yang bisa dihapus.
+
+Saat dokumen **Laporan Monev** dibuat (klik Pratinjau di tab Data paket), `docgen.js` memakai data penilaian ini:
+tabel Rencana/Realisasi/Keterangan per item, kalimat kesimpulan yang sudah disunting, dan hingga 6
+foto terakhir yang diunggah — ditampilkan langsung di dokumen (Pratinjau, Cetak/PDF, maupun Unduh
+`.doc`) lewat tautan gambar Drive `thumbnail?id=…`, bukan lagi kotak "Foto 1/2/3/4" kosong. Paket
+yang belum pernah dinilai lewat tab ini tetap bisa mencetak Laporan Monev seperti sebelumnya
+(memakai kalimat "terealisasi 100%" sebagai baku).
+
+> **Setelah menarik pembaruan ini**, jalankan ulang fungsi `setup()` sekali dari Apps Script editor
+> (lihat bagian 2 langkah 4) — ini menambahkan lembar `Monev` yang baru tanpa mengubah data yang
+> sudah ada. Tanpa langkah ini, tab Menilai tetap bisa dibuka tapi tombol **Simpan penilaian** akan
+> menampilkan pesan error sampai `setup()` dijalankan.
 
 ---
 
@@ -203,6 +228,7 @@ Backend membuat 10 lembar otomatis lewat `setup()`:
 | `Penyedia` | basis data penyedia + tautan company profile |
 | `Dokumen` | catatan tiap berkas yang diunggah (tertaut ke berkas di Drive) |
 | `HPS` | rincian HPS/RAB per paket (disimpan terpecah per 40.000 karakter per baris) |
+| `Monev` | hasil tab **Menilai (Monev)**: realisasi & keterangan per item HPS plus kesimpulan, dalam satu payload JSON per paket |
 | `Log` | jejak aktivitas (masuk, keluar, ubah, hapus) |
 
 Berkas yang diunggah disimpan di Google Drive dengan struktur folder:

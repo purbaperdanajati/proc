@@ -49,10 +49,15 @@
         return lanjut();
       });
     },
-    /* dialog pilih berkas + bilah kemajuan */
+    /* dialog pilih berkas + bilah kemajuan. opsi.multiple: izinkan pilih & unggah
+       beberapa berkas sekaligus (diunggah berurutan; selesai(row) dipanggil satu kali
+       per berkas yang berhasil, jadi pemanggil yang sudah ada tidak perlu berubah). */
     dialog: function (judul, meta, selesai, opsi) {
       opsi = opsi || {};
-      var input = el('input', { type: 'file', accept: opsi.accept || '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.zip' });
+      var input = el('input', {
+        type: 'file', accept: opsi.accept || '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.zip',
+        multiple: !!opsi.multiple
+      });
       var ket = UI.field({ label: 'Keterangan (opsional)', name: 'ket', placeholder: 'mis. dokumentasi 0%' });
       var subSel = null;
       if (opsi.subs && opsi.subs.length) {
@@ -61,27 +66,47 @@
           options: opsi.subs.map(function (s) { return { value: s, label: s }; })
         });
       }
+      var status = el('p.mini', { hidden: true });
       var bar = el('div.meter', { style: 'display:none' }, [el('i', { style: 'width:0%' })]);
       var isi = el('div.rapi', null, [
-        el('div.field', null, [el('span.lbl', { text: 'Berkas' }), input]),
-        subSel, ket, bar,
-        el('p.mini', { text: 'Maksimal ' + C.MAX_UPLOAD_MB + ' MB. Berkas besar dikirim bertahap agar tidak putus di tengah jalan.' })
+        el('div.field', null, [
+          el('span.lbl', { text: opsi.multiple ? 'Berkas (bisa pilih beberapa sekaligus)' : 'Berkas' }),
+          input
+        ]),
+        subSel, ket, status, bar,
+        el('p.mini', { text: 'Maksimal ' + C.MAX_UPLOAD_MB + ' MB per berkas. Berkas besar dikirim bertahap agar tidak putus di tengah jalan.' })
       ]);
+      var berjalan = false;
       UI.modal({
         title: judul, body: isi,
         actions: [{ label: 'Batal' }, {
           label: 'Unggah', kind: 'primary', close: false,
           onclick: function (tutup) {
-            var f = input.files[0];
-            if (!f) { UI.toast('Pilih berkas lebih dulu', 'bad'); return false; }
+            if (berjalan) return false;
+            var files = Array.prototype.slice.call(input.files || []);
+            if (!files.length) { UI.toast('Pilih berkas lebih dulu', 'bad'); return false; }
             var m = {};
             for (var k in meta) m[k] = meta[k];
             m.keterangan = isi.querySelector('[name="ket"]').value;
             if (subSel) m.sub = isi.querySelector('[name="sub"]').value;
-            bar.style.display = 'block';
-            Unggah.kirim(f, m, function (p) { bar.firstChild.style.width = Math.round(p * 100) + '%'; })
-              .then(function (row) { tutup(); UI.toast('Berkas tersimpan', 'ok'); selesai(row); })
-              .catch(function (e) { bar.style.display = 'none'; UI.err(e); });
+            berjalan = true; input.disabled = true;
+            bar.style.display = 'block'; status.hidden = false;
+            var sukses = 0, gagal = [], i = 0;
+            (function lanjut() {
+              if (i >= files.length) {
+                berjalan = false; input.disabled = false; tutup();
+                if (!gagal.length) UI.toast(sukses > 1 ? sukses + ' berkas tersimpan' : 'Berkas tersimpan', 'ok');
+                else UI.toast(sukses + ' dari ' + files.length + ' berkas tersimpan. Gagal: ' + gagal.join('; '), 'bad');
+                return;
+              }
+              var f = files[i];
+              status.textContent = files.length > 1 ? ('Mengunggah ' + (i + 1) + ' dari ' + files.length + ' — ' + f.name) : ('Mengunggah ' + f.name);
+              bar.firstChild.style.width = '0%';
+              Unggah.kirim(f, m, function (p) { bar.firstChild.style.width = Math.round(p * 100) + '%'; })
+                .then(function (row) { sukses++; selesai(row); })
+                .catch(function (e) { gagal.push(f.name + ' (' + (e && e.message ? e.message : e) + ')'); })
+                .then(function () { i++; lanjut(); });
+            })();
             return false;
           }
         }]

@@ -231,6 +231,25 @@ button.icon { background: none; border: 0; font-size: 20px; line-height: 1; curs
 .dok-file a { text-decoration: none; }
 .dok-aksi { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
+/* ---------- tab Menilai (Monev) ---------- */
+.monev-item { border: 1px solid var(--garis); border-radius: var(--r); padding: 12px 14px; background: var(--papan); }
+.monev-item .judul-item { font-weight: 600; font-size: 14px; }
+.monev-item .rencana-item { font-size: 12.5px; color: var(--tinta2); margin-top: 1px; }
+.foto-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.foto-mini { position: relative; width: 104px; height: 104px; border-radius: var(--r); overflow: hidden; border: 1px solid var(--garis); background: var(--garis2); }
+.foto-mini img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+.foto-mini .hapus {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(22, 36, 29, .65); color: #fff; border: 0; font-size: 13px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.foto-tambah {
+  width: 104px; height: 104px; border-radius: var(--r); border: 1.5px dashed var(--garis);
+  display: grid; place-items: center; color: var(--tinta2); cursor: pointer; background: var(--putih);
+  font-size: 12px; text-align: center; gap: 4px; padding: 6px;
+}
+.foto-tambah:hover { border-color: var(--hijau); color: var(--hijau); }
+
 /* ---------- kisi HPS ---------- */
 .hps-alat { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 0; }
 .hps-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--garis); border-radius: var(--r); background: var(--putih); }

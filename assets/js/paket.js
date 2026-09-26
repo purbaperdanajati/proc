@@ -33,7 +33,7 @@
         { name: 'jenis', label: 'Jenis pengadaan', type: 'select', required: true, options: [{ value: '', label: '— pilih —' }].concat(jenisOpsi()) },
         { name: 'nama', label: 'Nama paket', required: true, wide: true, placeholder: 'Pemeliharaan Gedung dan Bangunan' },
         { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', required: true },
-        { name: 'metode', label: 'Metode', type: 'select', options: ['Pengadaan Langsung', 'E-Purchasing', 'Penunjukan Langsung'].map(function (x) { return { value: x, label: x }; }) }
+        { name: 'metode', label: 'Metode', type: 'select', options: C.METODE_PENGADAAN.map(function (x) { return { value: x, label: x }; }) }
       ], { metode: 'Pengadaan Langsung' }, function (data) {
         data.tahun = App.state.tahun;
         data.status = 'persiapan';
@@ -98,6 +98,7 @@
     return API.call('paketDetail', { id: ctx.id }).then(function (d) {
       var p = d.paket, meta = metaPaket(p), dok = d.dokumen || [];
       var hpsModel = d.hps && d.hps.rows ? d.hps : null;
+      var monevData = d.monev || null;
       var s = App.satker(p.satker_id) || {};
       var tugas = App.tugas(p.satker_id, p.tahun) || {};
 
@@ -148,7 +149,7 @@
         { id: 'umum', label: 'Data paket', render: tabUmum },
         { id: 'hps', label: 'HPS / RAB', render: tabHPS },
         { id: 'dok', label: 'Berkas (13)', render: tabDok },
-        { id: 'cetak', label: 'Cetak dokumen', render: tabCetak }
+        { id: 'monev', label: 'Menilai (Monev)', render: tabMonev }
       ];
       var aktif = (ctx.params && ctx.params.tab) || 'umum';
       tabs.forEach(function (t) {
@@ -166,6 +167,25 @@
       function tabUmum(host2) {
         var pejabat = App.state.master.pejabat || [];
         var lbl = function (x) { return x.nama + (x.jabatan ? ' — ' + x.jabatan : ''); };
+
+        /* metode pengadaan: dropdown dari C.METODE_PENGADAAN, dengan opsi "Lainnya" yang
+           membuka kotak isian bebas — supaya metode di luar daftar (termasuk data lama
+           yang sudah tersimpan) tetap bisa dipakai tanpa kehilangan nilainya. */
+        var metodeKustom = !!p.metode && C.METODE_PENGADAAN.indexOf(p.metode) < 0;
+        var kotakMetodeLain = el('div', { hidden: !metodeKustom });
+        kotakMetodeLain.appendChild(UI.field({
+          name: 'metode_lainnya', label: 'Sebutkan metode', value: metodeKustom ? p.metode : '',
+          placeholder: 'mis. Kerja Sama Antar Instansi Pemerintah'
+        }));
+        var fMetode = UI.field({
+          name: 'metode', label: 'Metode pengadaan', type: 'select',
+          value: metodeKustom ? 'Lainnya' : (p.metode || ''),
+          options: [{ value: '', label: '— Pilih metode —' }]
+            .concat(C.METODE_PENGADAAN.map(function (x) { return { value: x, label: x }; }))
+            .concat([{ value: 'Lainnya', label: 'Lainnya' }]),
+          onchange: function () { kotakMetodeLain.hidden = this.value !== 'Lainnya'; }
+        });
+
         var form = el('form.grid2', { onsubmit: function (e) { e.preventDefault(); } });
         [
           { name: 'nama', label: 'Nama paket', value: p.nama, wide: true, required: true },
@@ -174,8 +194,11 @@
           { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', value: p.pagu },
           { name: 'nilai', label: 'Nilai kontrak (Rp)', format: 'rp', value: p.nilai },
           { name: 'penyedia_id', label: 'Penyedia', type: 'select', value: p.penyedia_id, options: B.opsiDari(App.state.master.penyedia) },
-          { name: 'ada_pph', label: 'Ada PPh (faktur & bupot)?', type: 'select', value: p.ada_pph ? 'ya' : 'tidak', options: [{ value: 'tidak', label: 'Tidak' }, { value: 'ya', label: 'Ya' }] },
-          { name: 'metode', label: 'Metode pengadaan', value: p.metode },
+          { name: 'ada_pph', label: 'Ada PPh (faktur & bupot)?', type: 'select', value: p.ada_pph ? 'ya' : 'tidak', options: [{ value: 'tidak', label: 'Tidak' }, { value: 'ya', label: 'Ya' }] }
+        ].forEach(function (x) { form.appendChild(UI.field(x)); });
+        form.appendChild(fMetode);
+        form.appendChild(kotakMetodeLain);
+        [
           { name: 'jenis_kontrak', label: 'Jenis kontrak', value: p.jenis_kontrak || 'Kontrak Harga Satuan' },
           { name: 'jangka_waktu', label: 'Jangka waktu (hari kalender)', type: 'number', value: p.jangka_waktu || 14 },
           { name: 'sumber_dana', label: 'Sumber dana', value: p.sumber_dana || App.jenis(p.jenis).sumber },
@@ -185,14 +208,23 @@
           { name: 'pp_id', label: 'Pejabat Pengadaan', type: 'select', value: p.pp_id || tugas.pp_id, options: B.opsiDari(pejabat, lbl) }
         ].forEach(function (x) { form.appendChild(UI.field(x)); });
 
-        var formNo = el('form.grid2', { onsubmit: function (e) { e.preventDefault(); } });
+        var formNo = el('form.rapi', { onsubmit: function (e) { e.preventDefault(); } });
         [
-          { k: 'sk_ppk', l: 'SK PPK' }, { k: 'sk_pp', l: 'SK PP' }, { k: 'kak', l: 'KAK' },
-          { k: 'hps', l: 'HPS' }, { k: 'sp', l: 'Surat Pesanan / SPK' }, { k: 'bast', l: 'BAST' },
-          { k: 'bap', l: 'BAP' }, { k: 'monev', l: 'Laporan Monev' }
+          { k: 'sk_ppk', l: 'SK PPK', gen: 'sk_ppk' }, { k: 'sk_pp', l: 'SK PP', gen: 'sk_pp' },
+          { k: 'kak', l: 'KAK', gen: 'kak' }, { k: 'hps', l: 'HPS', gen: 'hps' },
+          { k: 'sp', l: 'Surat Pesanan / SPK' }, { k: 'bast', l: 'BAST', gen: 'bast' },
+          { k: 'bap', l: 'BAP' }, { k: 'monev', l: 'Laporan Monev', gen: 'monev' }
         ].forEach(function (x) {
-          formNo.appendChild(UI.field({ name: 'no_' + x.k, label: 'Nomor ' + x.l, value: meta['no_' + x.k] || '' }));
-          formNo.appendChild(UI.field({ name: 'tgl_' + x.k, label: 'Tanggal ' + x.l, type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) }));
+          formNo.appendChild(el('div', null, [
+            el('div.baris', { style: 'justify-content:space-between;margin-bottom:8px' }, [
+              el('b', { style: 'font-size:13.5px', text: x.l }),
+              x.gen ? el('button.btn.kecil', { type: 'button', onclick: function () { cetakDok(x.gen); } }, 'Pratinjau') : null
+            ]),
+            el('div.grid2', null, [
+              UI.field({ name: 'no_' + x.k, label: 'Nomor', value: meta['no_' + x.k] || '' }),
+              UI.field({ name: 'tgl_' + x.k, label: 'Tanggal', type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) })
+            ])
+          ]));
         });
 
         function simpan(evt) {
@@ -201,6 +233,8 @@
           var data = UI.formData(form);
           data.id = p.id;
           data.ada_pph = data.ada_pph === 'ya';
+          if (data.metode === 'Lainnya') data.metode = String(data.metode_lainnya || '').trim();
+          delete data.metode_lainnya;
           var m = UI.formData(formNo);
           data.meta = JSON.stringify(m);
           return API.call('savePaket', { row: data }, { jsonp: false }).then(function () {
@@ -219,7 +253,7 @@
           ]),
           el('div.kartu', null, [
             el('header', null, [el('h2', { text: 'Nomor dan tanggal surat' }),
-              el('span.kanan.mini', { text: 'Dipakai otomatis saat dokumen dicetak' })]),
+              el('span.kanan.mini', { text: 'Simpan dulu, baru klik Pratinjau agar nomor terbaru ikut tercetak' })]),
             el('div.badan', null, [formNo])
           ]),
           el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan perubahan')])
@@ -326,6 +360,165 @@
         ]));
       }
 
+      /* ---------- menilai (monev) ---------- */
+      function tabMonev(host2) {
+        var items = HPS.daftarItem ? HPS.daftarItem(hpsModel) : [];
+        if (!items.length) {
+          host2.appendChild(el('div.kartu', null, [
+            el('div.badan', null, [UI.empty(
+              'Belum ada item untuk dinilai',
+              'Isi rincian HPS/RAB pada tab "HPS / RAB" terlebih dahulu — setiap baris uraian di situ akan muncul di sini untuk dinilai realisasinya.'
+            )])
+          ]));
+          return;
+        }
+        var simpanAda = (monevData && monevData.items) || [];
+        var berubah = false;
+        function tandai() { berubah = true; }
+
+        var daftar = el('div.rapi');
+        var penyegar = [];
+        items.forEach(function (it, i) {
+          var lama = simpanAda[i] || {};
+          var badge = UI.badge('—');
+          function segarkanBadge() {
+            var rv = form.elements['r' + i] ? String(form.elements['r' + i].value).trim() : '';
+            var sama = rv !== '' && rv === String(it.volume || '').trim();
+            badge.textContent = rv === '' ? 'Belum diisi' : (sama ? 'Sesuai rencana' : 'Berbeda dari rencana');
+            badge.className = 'badge' + (rv === '' ? '' : sama ? ' ok' : ' warn');
+          }
+          penyegar.push(segarkanBadge);
+          var fR = UI.field({
+            label: 'Realisasi', name: 'r' + i,
+            value: lama.realisasi != null && lama.realisasi !== '' ? lama.realisasi : it.volume,
+            oninput: function () { tandai(); segarkanBadge(); }
+          });
+          var fK = UI.field({
+            label: 'Keterangan (opsional)', name: 'k' + i, placeholder: 'mis. 1 unit belum dikirim, menyusul',
+            value: lama.keterangan || '', oninput: tandai
+          });
+          daftar.appendChild(el('div.monev-item', null, [
+            el('div.baris', { style: 'justify-content:space-between;align-items:flex-start;margin-bottom:10px' }, [
+              el('div', null, [
+                el('div.judul-item', { text: (i + 1) + '. ' + it.uraian }),
+                el('div.rencana-item', { text: 'Rencana: ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') })
+              ]),
+              badge
+            ]),
+            el('div', { style: 'display:grid;gap:10px' }, [fR, fK])
+          ]));
+        });
+
+        var fCatatan = UI.field({
+          label: 'Kesimpulan / catatan monev', name: 'catatan', type: 'textarea', rows: 5,
+          value: (monevData && monevData.catatan) || '',
+          placeholder: 'Ringkasan hasil monitoring dan evaluasi. Bisa diisi manual, atau klik "Buat draf otomatis" lalu sunting seperlunya.',
+          oninput: tandai
+        });
+
+        var form = el('form.rapi', { onsubmit: function (e) { e.preventDefault(); } }, [
+          el('div.kartu', null, [
+            el('header', null, [
+              el('h2', { text: 'Penilaian realisasi per item' }),
+              el('span.kanan.mini', { text: items.length + ' item dari HPS/RAB' })
+            ]),
+            el('div.badan', null, [daftar])
+          ]),
+          el('div.kartu', null, [
+            el('header', null, [
+              el('h2', { text: 'Kesimpulan' }),
+              el('button.btn.kecil.kanan', { type: 'button', onclick: draf }, 'Buat draf otomatis')
+            ]),
+            el('div.badan', null, [fCatatan])
+          ])
+        ]);
+        penyegar.forEach(function (f) { f(); });
+
+        function draf() {
+          var beda = [];
+          items.forEach(function (it, i) {
+            var rv = String(form.elements['r' + i].value || '').trim();
+            var kv = String(form.elements['k' + i].value || '').trim();
+            if (rv !== String(it.volume || '').trim()) {
+              beda.push(it.uraian + ' direncanakan ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') +
+                ', terealisasi ' + (rv || '-') + (it.satuan ? ' ' + it.satuan : '') + (kv ? ' (' + kv + ')' : ''));
+            }
+          });
+          form.elements.catatan.value = !beda.length
+            ? 'Pelaksanaan pekerjaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan. Seluruh pekerjaan sudah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik serta siap dimanfaatkan sesuai peruntukannya.'
+            : 'Pelaksanaan pekerjaan belum terealisasi sepenuhnya sesuai Surat Pesanan, dengan rincian sebagai berikut: ' +
+              beda.join('; ') + '. Selain hal tersebut, pekerjaan telah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik.';
+          tandai();
+        }
+
+        /* ---------- foto dokumentasi (tersimpan sebagai berkas dokumen #13) ---------- */
+        var fotoWrap = el('div.foto-grid');
+        function gambarFoto() {
+          clear(fotoWrap);
+          dok.filter(function (x) { return String(x.kode) === '13' && /^image\//i.test(x.mime || ''); })
+            .forEach(function (b) {
+              fotoWrap.appendChild(el('div.foto-mini', null, [
+                el('img', {
+                  src: 'https://drive.google.com/thumbnail?id=' + b.file_id + '&sz=w300',
+                  alt: b.nama_file || 'foto dokumentasi', title: 'Lihat pratinjau',
+                  onclick: function () { UI.drivePreview(b); }
+                }),
+                el('button.hapus', {
+                  type: 'button', title: 'Hapus foto', html: '&times;',
+                  onclick: function () {
+                    UI.confirm('Hapus foto ini?', function () {
+                      API.call('removeDok', { id: b.id }, { jsonp: false }).then(function () {
+                        dok = dok.filter(function (x) { return x.id !== b.id; });
+                        Store.drop('paket.' + App.state.tahun);
+                        gambarFoto(); gambarRingkas();
+                        UI.toast('Foto dihapus', 'ok');
+                      }).catch(UI.err);
+                    }, { yes: 'Hapus', kind: 'danger' });
+                  }
+                })
+              ]));
+            });
+          fotoWrap.appendChild(el('div.foto-tambah', {
+            onclick: function () {
+              Unggah.dialog('Tambah foto dokumentasi monev', { paket_id: p.id, kode: 13 }, function (row) {
+                dok.push(row);
+                Store.drop('paket.' + App.state.tahun);
+                gambarFoto(); gambarRingkas();
+              }, { accept: 'image/*', multiple: true });
+            }
+          }, '+ Tambah foto'));
+        }
+        gambarFoto();
+
+        function simpan(evt) {
+          var btn = evt && evt.target ? evt.target.closest('button') : null;
+          var selesai = UI.busy(btn);
+          var fd = UI.formData(form);
+          var out = {
+            items: items.map(function (it, i) {
+              return { realisasi: String(fd['r' + i] || '').trim(), keterangan: String(fd['k' + i] || '').trim() };
+            }),
+            catatan: String(fd.catatan || '').trim()
+          };
+          API.call('saveMonev', { paket_id: p.id, payload: JSON.stringify(out) }, { jsonp: false })
+            .then(function () {
+              monevData = out; berubah = false;
+              UI.toast('Penilaian monev tersimpan', 'ok');
+            }).catch(function (e) { selesai(); UI.err(e); }).then(selesai);
+        }
+        w.onbeforeunload = function () { return berubah ? 'Penilaian monev belum disimpan.' : undefined; };
+
+        host2.appendChild(el('div.rapi', null, [
+          form,
+          el('div.kartu', null, [
+            el('header', null, [el('h2', { text: 'Dokumentasi foto' }),
+              el('span.kanan.mini', { text: 'Tersimpan di folder Drive satker, sebagai berkas dokumen #13' })]),
+            el('div.badan', null, [fotoWrap])
+          ]),
+          el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan penilaian')])
+        ]));
+      }
+
       /* ---------- cetak ---------- */
       function konteks(gen) {
         var m = metaPaket(p);
@@ -341,7 +534,7 @@
           satker: s, paket: pk, tahun: p.tahun, jenis: App.jenis(p.jenis),
           kpa: App.pejabat(p.kpa_id || tugas.kpa_id), ppk: App.pejabat(p.ppk_id || tugas.ppk_id),
           pp: App.pejabat(p.pp_id || tugas.pp_id), penyedia: App.penyedia(p.penyedia_id),
-          sp_dipa: tugas.sp_dipa, hps: hpsModel,
+          sp_dipa: tugas.sp_dipa, hps: hpsModel, monev: monevData, dokumen: dok,
           kota: (App.state.master.config && App.state.master.config.kota) || 'Indramayu',
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
           nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),
@@ -350,38 +543,9 @@
       }
       function cetakDok(id) {
         var gen = C.GENERATOR.filter(function (g) { return g.id === id; })[0] || { id: id, field: 'no_' + id };
-        Doc.pratinjau(id, konteks(gen)).catch(UI.err);
-      }
-
-      function tabCetak(host2) {
-        var kartu = C.GENERATOR.map(function (g) {
-          var m = metaPaket(p);
-          var kunci = g.field.replace('no_', '');
-          var nomor = m['no_' + kunci] || '';
-          return el('div.dok-item', null, [
-            el('div.dok-no', { text: String(g.kode) }),
-            el('div', null, [
-              el('div.dok-nama', { text: g.nama }),
-              el('div.dok-file', null, [
-                nomor ? el('span', { text: 'Nomor ' + nomor }) : el('span.diam', { text: 'Nomor surat belum diisi — lihat tab Data paket' }),
-                m['tgl_' + kunci] ? el('span.diam', { text: Fmt.tanggal(m['tgl_' + kunci]) }) : null
-              ])
-            ]),
-            el('div.dok-aksi', null, [
-              el('button.btn.kecil', { onclick: function () { Doc.pratinjau(g.id, konteks(g)).catch(UI.err); } }, 'Pratinjau'),
-              el('button.btn.kecil', { onclick: function () { Doc.unduh(g.id, konteks(g)).catch(UI.err); } }, 'Unduh .doc'),
-              el('button.btn.kecil.primary', { onclick: function () { simpanKeBerkas(g); } }, 'Simpan ke berkas')
-            ])
-          ]);
-        });
-        host2.appendChild(el('div.kartu', null, [
-          el('header', null, [el('h2', { text: 'Dokumen yang dapat dibuat otomatis' }),
-            el('span.kanan.mini', { text: 'Dirakit di perangkat Anda' })]),
-          el('div.badan', null, [
-            el('p.mini', { text: 'Isi nomor dan tanggal surat pada tab Data paket agar langsung tercetak pada dokumen. Kop surat mengikuti profil satker.' }),
-            el('div.dok', null, kartu)
-          ])
-        ]));
+        Doc.pratinjau(id, konteks(gen), {
+          simpanKeBerkas: gen.kode ? function () { simpanKeBerkas(gen); } : null
+        }).catch(UI.err);
       }
 
       function simpanKeBerkas(g) {
