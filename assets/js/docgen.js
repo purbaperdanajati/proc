@@ -111,12 +111,19 @@
   }
 
   function ttd(kiri, kanan) {
+    /* o.label (opsional): baris di atas jabatan, mis. "PIHAK KESATU" — dipisah dari
+       o.jabatan supaya keduanya lewat E() masing-masing sekali saja (sebelumnya, kode
+       yang menempelkan '<br>' langsung ke dalam string jabatan lalu di-escape lagi oleh
+       blok() menghasilkan teks "&lt;br&gt;" mentah di dokumen, bukan baris baru).
+       o.nip / o.bawah (opsional, pilih salah satu): baris di bawah nama — o.nip otomatis
+       diberi awalan "NIP. ", o.bawah dipakai apa adanya (mis. jabatan penyedia "Direktur"). */
     function blok(o) {
       if (!o) return '';
       return (o.kota ? E(o.kota) + ', ' + E(o.tanggal) + '<br>' : '') +
+        (o.label ? E(o.label) + '<br>' : '') +
         E(o.jabatan || '') + ',' +
         '<div class="nm">' + E(o.nama || '..................') + '</div>' +
-        (o.nip ? 'NIP. ' + E(o.nip) : '');
+        (o.nip ? 'NIP. ' + E(o.nip) : (o.bawah ? E(o.bawah) : ''));
     }
     if (!kanan) return `<table class="ttd"><tr><td style="width:50%"></td><td>${blok(kiri)}</td></tr></table>`;
     return `<table class="ttd"><tr><td style="width:50%">${blok(kiri)}</td><td>${blok(kanan)}</td></tr></table>`;
@@ -129,6 +136,14 @@
       ' tahun ' + Fmt.kapital(Fmt.terbilang(d.getFullYear()));
   }
   function rupiahTerbilang(n) { return Fmt.rp(n) + ' (' + Fmt.kapital(Fmt.terbilang(n)) + ' Rupiah)'; }
+
+  /* daftar item HPS {uraian, volume, satuan} — dipakai T.bast & T.monev. HPS.daftarItem
+     baru ada sejak fitur Monev; kalau hps.js di server belum diperbarui, jangan sampai
+     dokumen gagal total karena TypeError — anggap saja daftar itemnya kosong (kedua
+     pemanggil sudah punya jalur cadangan sendiri untuk kondisi ini). */
+  function itemHPS(h) {
+    return (h && h.rows && typeof HPS.daftarItem === 'function') ? HPS.daftarItem(h) : [];
+  }
 
   /* ---------- template ---------- */
   var T = {};
@@ -258,30 +273,46 @@
 
   T.bast = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
-    var nilai = Number(pk.nilai || pk.pagu) || 0;
-    var rincian = c.hps && c.hps.rows ? HPS.tabelDokumen(c.hps, { tanpaHarga: true }) : '';
+    var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';
+    var items = itemHPS(c.hps);
+    var tabelBarang = items.length
+      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb">Uraian Barang</td>' +
+        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
+        items.map(function (it, i) {
+          return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
+            '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<p class="kecil">Rincian barang belum diisi pada HPS/RAB.</p>';
     var body = `
       <h1 class="judul garis">BERITA ACARA SERAH TERIMA PEKERJAAN</h1>
       <p class="nomor">Nomor : ${E(c.nomor || '..........')}</p>
-      <p>Pada hari ini ${E(Fmt.hariText(c.tanggal))} tanggal ${E(terbilangTgl(c.tanggal))} (${E(Fmt.iso(c.tanggal))}), kami yang bertanda tangan di bawah ini :</p>
+      <p>Pada hari ini, ${E(Fmt.hariText(c.tanggal))} tanggal ${E(terbilangTgl(c.tanggal))} (${E(Fmt.tglAngka(c.tanggal))}), kami yang bertanda tangan di bawah ini :</p>
       <table class="tata">
-        <tr><td style="width:.6cm">1.</td><td style="width:3.4cm">Nama</td><td style="width:.3cm">:</td><td><b>${E(c.ppk && c.ppk.nama)}</b></td></tr>
-        <tr><td></td><td>NIP</td><td>:</td><td>${E(c.ppk && c.ppk.nip)}</td></tr>
-        <tr><td></td><td>Jabatan</td><td>:</td><td>Pejabat Pembuat Komitmen pada ${E(s.nama || '')}</td></tr>
-        <tr><td></td><td colspan="3">Selanjutnya disebut <b>PIHAK PERTAMA</b>.</td></tr>
-        <tr><td colspan="4" style="height:8px"></td></tr>
-        <tr><td>2.</td><td>Nama</td><td>:</td><td><b>${E(v.direktur || '')}</b></td></tr>
-        <tr><td></td><td>Jabatan</td><td>:</td><td>${E(v.jabatan_direktur || 'Direktur')} ${E(v.nama || '')}</td></tr>
-        <tr><td></td><td>Alamat</td><td>:</td><td>${E(v.alamat || '')}</td></tr>
-        <tr><td></td><td colspan="3">Selanjutnya disebut <b>PIHAK KEDUA</b>.</td></tr>
+        <tr><td style="width:.6cm">1.</td><td style="width:4cm"><b>${E(c.ppk && c.ppk.nama)}</b></td><td style="width:.3cm">:</td>
+          <td>Pejabat Pembuat Komitmen bertindak atas nama ${E(jabatanKpa)} ${E(s.nama || '')} sebagaimana Surat Keputusan ${E(jabatanKpa)} ${E(s.nama || '')} Nomor ${E(c.no_sk_ppk || '..........')} tanggal ${E(tglPanjang(c.tgl_sk_ppk || c.tanggal))} tentang Penunjukan Pejabat Pembuat Komitmen Pengadaan Barang dan Jasa Pada ${E(s.nama || '')}</td></tr>
+        <tr><td></td><td colspan="3" style="padding-top:6px">Selanjutnya disebut <b>PIHAK KESATU</b></td></tr>
+        <tr><td colspan="4" class="spasi"></td></tr>
+        <tr><td>2.</td><td><b>${E(v.direktur || '')}</b></td><td>:</td>
+          <td>${E(v.jabatan_direktur || 'Direktur')} ${E(v.nama || '')}, bertindak untuk dan atas nama penyedia ${E(v.nama || '')}</td></tr>
+        <tr><td></td><td colspan="3" style="padding-top:6px">Selanjutnya disebut <b>PIHAK KEDUA</b></td></tr>
       </table>
-      <p style="margin-top:10px">PIHAK KEDUA menyerahkan kepada PIHAK PERTAMA, dan PIHAK PERTAMA menerima dari PIHAK KEDUA, hasil pekerjaan <b>${E(pk.nama || '')}</b> sesuai Surat Pesanan/SPK Nomor ${E(c.no_sp || '..........')} tanggal ${E(tglPanjang(c.tgl_sp || c.tanggal))}, dengan nilai pekerjaan sebesar ${E(rupiahTerbilang(nilai))}.</p>
-      ${rincian ? '<p>Rincian hasil pekerjaan :</p>' + rincian : ''}
-      <p>Pekerjaan tersebut telah diselesaikan 100% (seratus persen), sesuai spesifikasi yang ditetapkan, dan diterima dalam keadaan baik serta siap dimanfaatkan sesuai peruntukannya.</p>
-      <p>Demikian Berita Acara Serah Terima ini dibuat dengan sebenarnya untuk dipergunakan sebagaimana mestinya.</p>
+      <p style="margin-top:12px">Dengan ini telah disetujui dan disepakati untuk melakukan serah terima hasil pekerjaan dengan ketentuan sebagai berikut :</p>
+      <ol class="dasar">
+        <li>PIHAK KEDUA dalam kedudukannya seperti di atas telah menyerahkan hasil pekerjaan berupa <b>${E(pk.nama || '')}</b> yang dilaksanakan oleh <b>${E(v.nama || '')}</b> kepada PIHAK KESATU, dan PIHAK KESATU dalam kedudukan seperti tersebut di atas telah menerima hasil pekerjaan tersebut dalam keadaan baik dan prestasi pekerjaan telah mencapai 100% (seratus persen).</li>
+        <li>Penyerahan sebagaimana dimaksud pada poin satu di atas, berupa :
+          ${tabelBarang}
+        </li>
+        <li>Serah terima hasil pekerjaan dilaksanakan berdasarkan :
+          <ol class="huruf">
+            <li>Surat Pesanan Nomor : ${E(c.no_sp || '..........')} tanggal ${E(tglPanjang(c.tgl_sp || c.tanggal))}</li>
+            <li>Berita Acara Pemeriksaan Barang Nomor : ${E(c.no_bap || '..........')}</li>
+          </ol>
+        </li>
+      </ol>
+      <p>Demikian Berita Acara Serah Terima Pekerjaan ini dibuat dalam rangkap yang diperlukan untuk dapat dipergunakan sebagaimana mestinya.</p>
       ${ttd(
-      { jabatan: 'PIHAK KEDUA<br>' + E(v.nama || ''), nama: v.direktur, nip: '' },
-      { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'PIHAK PERTAMA<br>Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip }
+      { label: 'PIHAK KEDUA', jabatan: v.nama || '', nama: v.direktur, bawah: v.jabatan_direktur || 'Direktur' },
+      { label: 'PIHAK KESATU', jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip }
     )}`;
     return { judul: 'BAST - ' + (pk.nama || ''), html: kop(s) + body };
   };
@@ -295,7 +326,7 @@
       'Pelaksanaan pekerjaan telah terealisasi 100% (seratus persen) sesuai Surat Pesanan. Seluruh pekerjaan sudah memenuhi spesifikasi yang ditetapkan dan berada dalam kondisi baik serta siap dimanfaatkan sesuai peruntukannya.';
     var lamp = '';
     if (c.hps && c.hps.rows) {
-      var items = HPS.daftarItem(c.hps);
+      var items = itemHPS(c.hps);
       var mvItems = mv.items || [];
 
       /* tabel rencana vs realisasi per item, sesuai hasil penilaian di tab Monev */

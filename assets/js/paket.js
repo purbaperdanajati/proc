@@ -2,6 +2,10 @@
 (function (w) {
   'use strict';
   var C = w.CONFIG, B = w.Bantu;
+  /* fallback bila config.js di server belum diperbarui (belum punya METODE_PENGADAAN) —
+     supaya halaman tetap bisa dibuka, bukan malah gagal total karena .indexOf/.map
+     dipanggil pada undefined. Tambahkan daftar Anda sendiri di config.js kapan saja. */
+  var METODE_OPSI = C.METODE_PENGADAAN || ['Pengadaan Langsung', 'Penunjukan Langsung', 'E-Purchasing'];
 
   function jenisOpsi() {
     return C.JENIS_PENGADAAN.map(function (j) { return { value: j.id, label: j.nama }; });
@@ -33,7 +37,7 @@
         { name: 'jenis', label: 'Jenis pengadaan', type: 'select', required: true, options: [{ value: '', label: '— pilih —' }].concat(jenisOpsi()) },
         { name: 'nama', label: 'Nama paket', required: true, wide: true, placeholder: 'Pemeliharaan Gedung dan Bangunan' },
         { name: 'pagu', label: 'Pagu (Rp)', format: 'rp', required: true },
-        { name: 'metode', label: 'Metode', type: 'select', options: C.METODE_PENGADAAN.map(function (x) { return { value: x, label: x }; }) }
+        { name: 'metode', label: 'Metode', type: 'select', options: METODE_OPSI.map(function (x) { return { value: x, label: x }; }) }
       ], { metode: 'Pengadaan Langsung' }, function (data) {
         data.tahun = App.state.tahun;
         data.status = 'persiapan';
@@ -168,10 +172,11 @@
         var pejabat = App.state.master.pejabat || [];
         var lbl = function (x) { return x.nama + (x.jabatan ? ' — ' + x.jabatan : ''); };
 
-        /* metode pengadaan: dropdown dari C.METODE_PENGADAAN, dengan opsi "Lainnya" yang
-           membuka kotak isian bebas — supaya metode di luar daftar (termasuk data lama
-           yang sudah tersimpan) tetap bisa dipakai tanpa kehilangan nilainya. */
-        var metodeKustom = !!p.metode && C.METODE_PENGADAAN.indexOf(p.metode) < 0;
+        /* metode pengadaan: dropdown dari METODE_OPSI (C.METODE_PENGADAAN, dengan fallback
+           bila config.js belum diperbarui), dengan opsi "Lainnya" yang membuka kotak isian
+           bebas — supaya metode di luar daftar (termasuk data lama yang sudah tersimpan)
+           tetap bisa dipakai tanpa kehilangan nilainya. */
+        var metodeKustom = !!p.metode && METODE_OPSI.indexOf(p.metode) < 0;
         var kotakMetodeLain = el('div', { hidden: !metodeKustom });
         kotakMetodeLain.appendChild(UI.field({
           name: 'metode_lainnya', label: 'Sebutkan metode', value: metodeKustom ? p.metode : '',
@@ -181,7 +186,7 @@
           name: 'metode', label: 'Metode pengadaan', type: 'select',
           value: metodeKustom ? 'Lainnya' : (p.metode || ''),
           options: [{ value: '', label: '— Pilih metode —' }]
-            .concat(C.METODE_PENGADAAN.map(function (x) { return { value: x, label: x }; }))
+            .concat(METODE_OPSI.map(function (x) { return { value: x, label: x }; }))
             .concat([{ value: 'Lainnya', label: 'Lainnya' }]),
           onchange: function () { kotakMetodeLain.hidden = this.value !== 'Lainnya'; }
         });
@@ -538,7 +543,8 @@
           kota: (App.state.master.config && App.state.master.config.kota) || 'Indramayu',
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
           nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),
-          no_sp: m.no_sp, tgl_sp: m.tgl_sp, no_sk_ppk: m.no_sk_ppk, tgl_sk_ppk: m.tgl_sk_ppk
+          no_sp: m.no_sp, tgl_sp: m.tgl_sp, no_sk_ppk: m.no_sk_ppk, tgl_sk_ppk: m.tgl_sk_ppk,
+          no_bap: m.no_bap, tgl_bap: m.tgl_bap
         };
       }
       function cetakDok(id) {

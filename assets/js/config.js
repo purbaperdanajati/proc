@@ -1,8 +1,8 @@
 /* SIPADU - konfigurasi aplikasi.
    Satu-satunya berkas yang perlu diubah saat deploy. */
 window.CONFIG = {
-  APP_NAME: 'SIPADU',
-  APP_LONG: 'Sistem Informasi Pengadaan Terpadu',
+  APP_NAME: 'PROCIMY',
+  APP_LONG: 'Procurement Indramayu',
   INSTANSI: 'Kantor Kementerian Agama Kabupaten Indramayu',
   VERSION: '1.0.0',
 

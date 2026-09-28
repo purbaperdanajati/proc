@@ -96,6 +96,10 @@
       var d = Fmt.toDate(v); if (!d) return '';
       return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
     },
+    tglAngka: function (v) {
+      var d = Fmt.toDate(v); if (!d) return '';
+      return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear();
+    },
     toDate: function (v) {
       if (!v) return null;
       if (v instanceof Date) return isNaN(v) ? null : v;
@@ -334,22 +338,29 @@
         };
         if (o.attr) for (var a in o.attr) at[a] = o.attr[a];
         input = el('input', at);
-        input.value = o.value == null ? '' : (o.format === 'rp' ? Fmt.num(Number(o.value) || 0, 0) : o.value);
+        input.value = o.value == null ? '' : (o.format === 'rp' ? String(Math.round(Number(o.value) || 0)) : o.value); /* diformat ribuan di bawah */
         if (o.format === 'rp') {
           (function (input) {
             input.style.textAlign = 'right';
-            function sync() { input.dataset.angka = String(Fmt.parseNum(input.value)); }
+            /* Nominal rupiah = bilangan bulat. Ambil HANYA digit dari isi kolom, jangan lewat
+               Fmt.parseNum: parseNum menebak titik/koma sebagai desimal atau ribuan, dan tebakan itu
+               salah begitu ada digit baru diketik ("12.3456" / "12,3456" dibaca desimal -> 12). */
+            function digit(s) { return String(s == null ? '' : s).replace(/\D/g, '').replace(/^0+(?=\d)/, ''); }
+            function ribuan(d) { return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); } /* selalu titik, tak bergantung locale */
+            function sync() { input.dataset.angka = digit(input.value) || '0'; }
+            input.value = ribuan(digit(input.value));
             sync(); /* penting: isi dataset.angka SEKARANG juga (bukan cuma saat difokus/diketik),
                        supaya UI.formData tetap membaca angka mentah yang benar walau field ini
-                       tidak pernah disentuh user sama sekali dalam sesi edit ini — sebelum ini,
-                       field 'rp' yang tak tersentuh membuat formData mengirim teks berformat titik
-                       ("50.000.000") alih-alih angka, sehingga nilainya salah/hilang saat disimpan. */
+                       tidak pernah disentuh user sama sekali dalam sesi edit ini. */
             input.addEventListener('input', function () {
-              var awal = input.selectionStart, len = input.value.length;
-              var baru = Fmt.num(Fmt.parseNum(input.value), 0);
+              var caret = input.selectionStart, raw = input.value;
+              var digitSebelumCaret = digit(raw.slice(0, caret)).length;
+              var baru = ribuan(digit(raw));
               input.value = baru;
               sync();
-              var pos = awal + (baru.length - len);
+              /* kembalikan kursor tepat setelah digit ke-N yang sama */
+              var pos = 0, hitung = 0;
+              while (pos < baru.length && hitung < digitSebelumCaret) { if (/\d/.test(baru[pos])) hitung++; pos++; }
               try { input.setSelectionRange(pos, pos); } catch (e) { }
             });
             input.addEventListener('focus', sync);
