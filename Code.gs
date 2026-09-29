@@ -29,12 +29,8 @@ var SKEMA = {
   Paket:     ['id', 'tahun', 'satker_id', 'jenis', 'nama', 'pagu', 'nilai', 'penyedia_id', 'metode',
               'jenis_kontrak', 'jangka_waktu', 'sumber_dana', 'lokasi', 'ada_pph', 'status',
               'kpa_id', 'ppk_id', 'pp_id', 'meta', 'folder_id', 'created_at', 'updated_at'],
-  /* Kolom baru SELALU ditambahkan di UJUNG daftar: tulisBaris/perbaruiBaris menulis
-     berdasarkan urutan daftar ini, jadi urutannya harus sama dengan urutan kolom fisik di
-     lembar. Untuk lembar yang sudah ada, setup() melengkapi header kolom yang kurang. */
   Penyedia:  ['id', 'nama', 'bentuk', 'direktur', 'jabatan_direktur', 'alamat', 'npwp', 'telp',
-              'email', 'cp_file_id', 'cp_url', 'aktif',
-              'no_hp', 'no_rekening', 'nama_rekening', 'bank'],
+              'email', 'cp_file_id', 'cp_url', 'aktif', 'nomor_hp', 'no_rekening', 'nama_rekening', 'bank'],
   Dokumen:   ['id', 'paket_id', 'kode', 'sub', 'nama_file', 'file_id', 'url', 'mime', 'size',
               'keterangan', 'uploaded_by', 'uploaded_at'],
   HPS:       ['id', 'paket_id', 'part', 'payload', 'total', 'updated_at'],
@@ -42,47 +38,25 @@ var SKEMA = {
   Log:       ['ts', 'user', 'aksi', 'detail']
 };
 
-/* Kolom yang HARUS disimpan sebagai teks murni. Google Sheets menganggap string berisi
-   angka (mis. "081234567890") sebagai bilangan sehingga angka 0 di depan hilang, dan angka
-   panjang (nomor rekening) bisa terpotong presisinya. Format kolom "Plain text" mencegahnya. */
-var KOLOM_TEKS = {
-  Penyedia: ['no_hp', 'no_rekening', 'nama_rekening', 'bank']
-};
-
-/* Migrasi lembar yang sudah ada agar sesuai SKEMA terbaru (aman dijalankan berulang):
-   - melengkapi sel header yang masih kosong (kolom baru di ujung kanan),
-   - memasang format teks murni pada KOLOM_TEKS.
-   Hanya sel header yang KOSONG yang diisi; header yang sudah ada tidak pernah ditimpa. */
-function pastikanLembar(nama, paksa) {
-  var cache = CacheService.getScriptCache(), kunci = 'skema_ok_' + nama;
-  if (!paksa && cache.get(kunci)) return;
-  var sh = lembar(nama), head = SKEMA[nama];
-  if (sh.getMaxColumns() < head.length) sh.insertColumnsAfter(sh.getMaxColumns(), head.length - sh.getMaxColumns());
-  var cur = sh.getRange(1, 1, 1, head.length).getValues()[0], berubah = false;
-  head.forEach(function (h, i) {
-    if (String(cur[i] === undefined ? '' : cur[i]) === '') {
-      sh.getRange(1, i + 1).setValue(h).setFontWeight('bold');
-      berubah = true;
-    }
-  });
-  (KOLOM_TEKS[nama] || []).forEach(function (h) {
-    var i = head.indexOf(h);
-    if (i > -1) sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@');
-  });
-  if (berubah) buangCache(nama);
-  try { cache.put(kunci, '1', 21600); } catch (e) { }
-}
-
 /* ============================ PEMASANGAN ============================ */
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(SKEMA).forEach(function (nama) {
     var sh = ss.getSheetByName(nama) || ss.insertSheet(nama);
+    var skema = SKEMA[nama];
     if (sh.getLastRow() === 0) {
-      sh.getRange(1, 1, 1, SKEMA[nama].length).setValues([SKEMA[nama]]).setFontWeight('bold');
+      sh.getRange(1, 1, 1, skema.length).setValues([skema]).setFontWeight('bold');
       sh.setFrozenRows(1);
+    } else {
+      /* skema bisa bertambah kolom di kemudian hari (mis. pembaruan ini menambah kolom
+         rekening pada Penyedia). Lengkapi header yang belum ada di ujung kanan tanpa
+         menyentuh header atau data yang sudah tersimpan. */
+      var lebarSekarang = sh.getLastColumn();
+      if (skema.length > lebarSekarang) {
+        var tambahan = skema.slice(lebarSekarang);
+        sh.getRange(1, lebarSekarang + 1, 1, tambahan.length).setValues([tambahan]).setFontWeight('bold');
+      }
     }
-    pastikanLembar(nama, true); /* lembar lama: lengkapi kolom baru & format teks */
   });
   var kosong = ss.getSheetByName('Sheet1') || ss.getSheetByName('Sheet 1');
   if (kosong && ss.getSheets().length > 1) ss.deleteSheet(kosong);
@@ -242,7 +216,6 @@ function idBaru(pre) {
   return (pre || 'X') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 function tulisBaris(nama, obj) {
-  if (KOLOM_TEKS[nama]) pastikanLembar(nama);
   var sh = lembar(nama), head = SKEMA[nama];
   if (!obj.id && head[0] === 'id') obj.id = idBaru(nama.charAt(0));
   sh.appendRow(head.map(function (h) { return obj[h] === undefined ? '' : obj[h]; }));
@@ -250,7 +223,6 @@ function tulisBaris(nama, obj) {
   return obj;
 }
 function perbaruiBaris(nama, id, patch) {
-  if (KOLOM_TEKS[nama]) pastikanLembar(nama);
   var sh = lembar(nama), head = SKEMA[nama];
   var baris = cariBaris(nama, id);
   if (!baris) throw new Error('Data tidak ditemukan.');

@@ -6,6 +6,7 @@
      supaya halaman tetap bisa dibuka, bukan malah gagal total karena .indexOf/.map
      dipanggil pada undefined. Tambahkan daftar Anda sendiri di config.js kapan saja. */
   var METODE_OPSI = C.METODE_PENGADAAN || ['Pengadaan Langsung', 'Penunjukan Langsung', 'E-Purchasing'];
+  var KONTRAK_OPSI = C.JENIS_KONTRAK || ['Kontrak Harga Satuan', 'Kontrak Lumsum', 'Kontrak Gabungan Lumsum dan Harga Satuan'];
 
   function jenisOpsi() {
     return C.JENIS_PENGADAAN.map(function (j) { return { value: j.id, label: j.nama }; });
@@ -191,6 +192,23 @@
           onchange: function () { kotakMetodeLain.hidden = this.value !== 'Lainnya'; }
         });
 
+        /* jenis kontrak: sama seperti metode di atas — dropdown dari KONTRAK_OPSI dengan
+           opsi "Lainnya" yang membuka kotak isian bebas, supaya nilai lama di luar daftar
+           (termasuk yang sudah tersimpan) tetap tampil apa adanya alih-alih hilang. */
+        var kontrakKustom = !!p.jenis_kontrak && KONTRAK_OPSI.indexOf(p.jenis_kontrak) < 0;
+        var kotakKontrakLain = el('div', { hidden: !kontrakKustom });
+        kotakKontrakLain.appendChild(UI.field({
+          name: 'jenis_kontrak_lainnya', label: 'Sebutkan jenis kontrak', value: kontrakKustom ? p.jenis_kontrak : '',
+          placeholder: 'mis. Kontrak Tahun Jamak'
+        }));
+        var fJenisKontrak = UI.field({
+          name: 'jenis_kontrak', label: 'Jenis kontrak', type: 'select',
+          value: kontrakKustom ? 'Lainnya' : (p.jenis_kontrak || 'Kontrak Harga Satuan'),
+          options: KONTRAK_OPSI.map(function (x) { return { value: x, label: x }; })
+            .concat([{ value: 'Lainnya', label: 'Lainnya' }]),
+          onchange: function () { kotakKontrakLain.hidden = this.value !== 'Lainnya'; }
+        });
+
         var form = el('form.grid2', { onsubmit: function (e) { e.preventDefault(); } });
         [
           { name: 'nama', label: 'Nama paket', value: p.nama, wide: true, required: true },
@@ -203,8 +221,9 @@
         ].forEach(function (x) { form.appendChild(UI.field(x)); });
         form.appendChild(fMetode);
         form.appendChild(kotakMetodeLain);
+        form.appendChild(fJenisKontrak);
+        form.appendChild(kotakKontrakLain);
         [
-          { name: 'jenis_kontrak', label: 'Jenis kontrak', value: p.jenis_kontrak || 'Kontrak Harga Satuan' },
           { name: 'jangka_waktu', label: 'Jangka waktu (hari kalender)', type: 'number', value: p.jangka_waktu || 14 },
           { name: 'sumber_dana', label: 'Sumber dana', value: p.sumber_dana || App.jenis(p.jenis).sumber },
           { name: 'lokasi', label: 'Lokasi pekerjaan', value: p.lokasi || s.nama, wide: true },
@@ -240,6 +259,8 @@
           data.ada_pph = data.ada_pph === 'ya';
           if (data.metode === 'Lainnya') data.metode = String(data.metode_lainnya || '').trim();
           delete data.metode_lainnya;
+          if (data.jenis_kontrak === 'Lainnya') data.jenis_kontrak = String(data.jenis_kontrak_lainnya || '').trim();
+          delete data.jenis_kontrak_lainnya;
           var m = UI.formData(formNo);
           data.meta = JSON.stringify(m);
           return API.call('savePaket', { row: data }, { jsonp: false }).then(function () {
@@ -406,7 +427,7 @@
             el('div.baris', { style: 'justify-content:space-between;align-items:flex-start;margin-bottom:10px' }, [
               el('div', null, [
                 el('div.judul-item', { text: (i + 1) + '. ' + it.uraian }),
-                el('div.rencana-item', { text: 'Rencana: ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') })
+                el('div.rencana-item', { text: 'Volume: ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') })
               ]),
               badge
             ]),
