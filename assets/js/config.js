@@ -4,7 +4,7 @@ window.CONFIG = {
   APP_NAME: 'PROCIMY',
   APP_LONG: 'Procurement Indramayu',
   INSTANSI: 'Kantor Kementerian Agama Kabupaten Indramayu',
-  VERSION: '1.1.1',
+  VERSION: '1.0.0',
 
   /* Tempel URL Web App Apps Script (.../exec) di sini.
      Boleh dibiarkan kosong: saat pertama dibuka, aplikasi meminta URL
