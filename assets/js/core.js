@@ -416,14 +416,14 @@
     loading: function (t) { return el('div.loading', { text: t || 'Memuat…' }); },
     badge: function (text, kind) { return el('span.badge' + (kind ? '.' + kind : ''), { text: text }); },
 
-    /* pita kelengkapan 13 dokumen */
+    /* pita kelengkapan dokumen (jumlah segmen mengikuti C.DOKUMEN) */
     pita: function (adaMap, paket) {
-      var wrap = el('div.pita', { title: 'Kelengkapan 13 dokumen' });
+      var wrap = el('div.pita', { title: 'Kelengkapan ' + C.DOKUMEN.length + ' dokumen' });
       C.DOKUMEN.forEach(function (d) {
-        var perlu = !d.bersyarat || (paket && paket[d.bersyarat]);
+        var perlu = w.dokPerlu(d, paket);
         var ada = adaMap[d.kode];
         wrap.appendChild(el('i.seg' + (!perlu ? '.na' : ada ? '.ok' : ''), {
-          title: d.kode + '. ' + d.nama + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
+          title: w.dokNo(d.kode) + '. ' + d.nama + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
         }));
       });
       return wrap;

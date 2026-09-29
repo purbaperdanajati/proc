@@ -274,15 +274,7 @@
   T.bast = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
     var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';
-    var items = itemHPS(c.hps);
-    var tabelBarang = items.length
-      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb">Uraian Barang</td>' +
-        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
-        items.map(function (it, i) {
-          return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
-            '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
-        }).join('') + '</tbody></table>'
-      : '<p class="kecil">Rincian barang belum diisi pada HPS/RAB.</p>';
+    var tabelBarang = tabelBarangHTML(c);
     var body = `
       <h1 class="judul garis">BERITA ACARA SERAH TERIMA PEKERJAAN</h1>
       <p class="nomor">Nomor : ${E(c.nomor || '..........')}</p>
@@ -315,6 +307,125 @@
       { label: 'PIHAK KESATU', jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip }
     )}`;
     return { judul: 'BAST - ' + (pk.nama || ''), html: kop(s) + body };
+  };
+
+  /* tabel No | Uraian Barang | Satuan Ukuran | Volume Barang dari rincian HPS —
+     dipakai T.bast dan T.bap */
+  function tabelBarangHTML(c) {
+    var items = itemHPS(c.hps);
+    return items.length
+      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb tengah">Uraian Barang</td>' +
+        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
+        items.map(function (it, i) {
+          return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
+            '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<p class="kecil">Rincian barang belum diisi pada HPS/RAB.</p>';
+  }
+  function alamatSatker(s) {
+    return [s.alamat, s.desa, s.kecamatan].filter(Boolean).join(', ');
+  }
+  function rpKoma(n) { return 'Rp. ' + Fmt.num(Math.round(Number(n) || 0), 2); }
+
+  /* BA Pemeriksaan Barang — nomor/tanggal dari field "BA Pemeriksaan Barang" (no_bap/tgl_bap) */
+  T.bap = function (c) {
+    var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
+    var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';
+    var body = `
+      <h1 class="judul garis">BERITA ACARA PEMERIKSAAN BARANG</h1>
+      <p class="nomor">Nomor : ${E(c.nomor || '..........')}</p>
+      <p>Pada hari ini, ${E(Fmt.hariText(c.tanggal))} tanggal ${E(terbilangTgl(c.tanggal))} (${E(Fmt.tglAngka(c.tanggal))}), Pejabat Pembuat Komitmen bertindak atas nama ${E(jabatanKpa)} ${E(s.nama || '')} sebagaimana Surat Keputusan ${E(jabatanKpa)} ${E(s.nama || '')} Nomor ${E(c.no_sk_ppk || '..........')} tanggal ${E(tglPanjang(c.tgl_sk_ppk || c.tanggal))} tentang Penunjukan Pejabat Pembuat Komitmen Pengadaan Barang dan Jasa Pada ${E(s.nama || '')}, telah melakukan pemeriksaan terhadap <b>${E(pk.nama || '')}</b> dilaksanakan oleh ${E(v.nama || '..........')}${v.alamat ? ' yang beralamat di ' + E(v.alamat) : ''}.</p>
+      <p style="margin-bottom:2px">Berdasarkan antara lain :</p>
+      <ol class="dasar" style="list-style:decimal"><li>Surat Pesanan Nomor : ${E(c.no_sp || '..........')} tanggal ${E(tglPanjang(c.tgl_sp || c.tanggal))}</li></ol>
+      <p style="margin-top:6px">Adapun hasil pemeriksaan adalah sebagai berikut :</p>
+      ${tabelBarangHTML(c)}
+      <p>Kesimpulan hasil penelitian dan pemeriksaan terhadap prestasi pekerjaan yang telah dilaksanakan antara lain :</p>
+      <ol class="dasar" style="list-style:decimal">
+        <li>Kemajuan pelaksanaan tersebut sebesar 100% (seratus persen)</li>
+        <li>Hal-hal lain yang luput dari pemeriksaan dan menyimpang atau tidak sesuai dengan Surat Pesanan menjadi tanggungjawab Penyedia Barang</li>
+      </ol>
+      <p style="margin-top:10px">Demikian Berita Acara Pemeriksaan ini dibuat dalam rangkap yang diperlukan untuk dapat dipergunakan sebagaimana mestinya.</p>
+      ${ttd(
+      { label: 'PIHAK KEDUA', jabatan: v.nama || '', nama: v.direktur, bawah: v.jabatan_direktur || 'Direktur' },
+      { label: 'PIHAK KESATU', jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip }
+    )}`;
+    return { judul: 'BA Pemeriksaan Barang - ' + (pk.nama || ''), html: kop(s) + body };
+  };
+
+  /* BA Pembayaran — nomor/tanggal dari field "BA Pembayaran" (no_bayar/tgl_bayar).
+     Nilai kontrak diambil dari Nilai kontrak paket (dianggap sudah termasuk PPN); bila kosong,
+     dipakai total HPS. DPP = nilai / (1 + PPN%), PPN% mengikuti pengaturan pada rincian HPS (baku 11%). */
+  T.bayar = function (c) {
+    var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {}, ppk = c.ppk || {};
+    var nilai = Number(pk.nilai) || (c.hps && c.hps.rows ? HPS.totalAkhir(c.hps) : 0);
+    var ppnPersen = (c.hps && c.hps.ppn != null && c.hps.ppn !== '') ? Number(c.hps.ppn) || 0 : 11;
+    var dpp = ppnPersen ? Math.round(nilai / (1 + ppnPersen / 100)) : nilai;
+    var ppn = nilai - dpp;
+    var namaRek = v.nama_rekening || v.nama || '..........';
+    var alamatS = alamatSatker(s);
+    function baris(no, label, isi) {
+      return '<tr><td style="width:.7cm">' + no + '</td><td style="width:3.6cm">' + label + '</td><td style="width:.3cm">:</td><td>' + isi + '</td></tr>';
+    }
+    function hitung(label, nominal) {
+      return '<tr><td>' + label + '</td><td style="width:.8cm;text-align:center">=</td><td style="width:2.4cm">Rp.</td><td style="width:3.2cm;text-align:right">' + Fmt.num(Math.round(nominal), 2) + '</td></tr>';
+    }
+    var body = `
+      <h1 class="judul garis">BERITA ACARA PEMBAYARAN</h1>
+      <p class="nomor">Nomor : ${E(c.nomor || '..........')}</p>
+      <p>Pada hari ini, ${E(Fmt.hariText(c.tanggal))} tanggal ${E(terbilangTgl(c.tanggal))} (${E(Fmt.tglAngka(c.tanggal))}), bertempat di ${E(s.nama || '')}${alamatS ? ' ' + E(alamatS) : ''}, para pihak yang bertanda tangan di bawah ini :</p>
+      <table class="tata">
+        ${baris('I.', 'Nama', E(ppk.nama || '..........'))}
+        ${baris('', 'NIP', E(ppk.nip || '-'))}
+        ${baris('', 'Jabatan', 'PPK Pengadaan Barang dan Jasa pada ' + E(s.nama || ''))}
+        ${baris('', 'Alamat', E(alamatS || '-'))}
+        <tr><td></td><td colspan="3" style="padding:6px 0 8px">selanjutnya disebut <b>Pihak Kesatu</b></td></tr>
+        ${baris('II.', 'Nama', E(v.direktur || '..........'))}
+        ${baris('', 'Badan Usaha', E(v.nama || '..........'))}
+        ${baris('', 'Jabatan', E(v.jabatan_direktur || 'Direktur'))}
+        ${baris('', 'Alamat', E(v.alamat || '-'))}
+        <tr><td></td><td colspan="3" style="padding:6px 0 8px">selanjutnya disebut <b>Pihak Kedua</b></td></tr>
+      </table>
+      <p style="margin-bottom:4px">menyatakan bahwa :</p>
+      <table class="tata">
+        <tr><td style="width:.7cm">A.</td><td colspan="3">Sesuai data pekerjaan :</td></tr>
+        <tr><td></td><td colspan="3">
+          <table class="tata">
+            <tr><td style="width:.7cm">1.</td><td style="width:3.6cm">Paket Pekerjaan</td><td style="width:.3cm">:</td><td>${E(pk.nama || '')}</td></tr>
+            <tr><td>2.</td><td>Lokasi</td><td>:</td><td>${E(pk.lokasi || s.nama || '')}</td></tr>
+            <tr><td>3.</td><td>Penyedia Jasa</td><td>:</td><td>${E(v.nama || '..........')}</td></tr>
+            <tr><td>4.</td><td>Surat Pesanan</td><td>:</td><td>Nomor : ${E(c.no_sp || '..........')}<br>Tanggal : ${E(tglPanjang(c.tgl_sp || c.tanggal))}</td></tr>
+            <tr><td>5.</td><td>Nilai Kontrak</td><td>:</td><td>${E(rpKoma(nilai))} (${E(Fmt.kapital(Fmt.terbilang(nilai)))} Rupiah)</td></tr>
+            <tr><td>6.</td><td>Addendum I</td><td>:</td><td>Nomor : -<br>Tanggal : -</td></tr>
+            <tr><td>7.</td><td>Nilai Kontrak Addendum I</td><td>:</td><td>Rp. -</td></tr>
+          </table></td></tr>
+        <tr><td colspan="4" class="spasi"></td></tr>
+        <tr><td>B.</td><td colspan="3"><p style="margin:0">Berdasarkan Surat Pesanan dan Berita Acara Pemeriksaan Pekerjaan, maka <b>Pihak Kedua</b> berhak menerima pembayaran 100% dari nilai kontrak dari <b>Pihak Kesatu</b>, dengan rincian sebagai berikut :</p></td></tr>
+        <tr><td></td><td colspan="3">
+          <table class="tata">
+            <tr><td style="width:.7cm">1.</td><td colspan="4">Perhitungan Pembayaran</td></tr>
+            <tr><td></td><td colspan="4"><table class="tata" style="width:auto">
+              <tr><td>100% x ${E(rpKoma(dpp))}</td><td style="width:.8cm;text-align:center">=</td><td style="width:1.2cm">Rp.</td><td style="width:3.2cm;text-align:right">${Fmt.num(dpp, 2)}</td></tr>
+              ${ppnPersen ? hitung('PPN ' + Fmt.num(ppnPersen, 2).replace(/,00$/, '') + '%', ppn).replace('<td style="width:2.4cm">Rp.</td>', '<td>Rp.</td>') : ''}
+            </table></td></tr>
+            <tr><td>2.</td><td colspan="4">Rekapitulasi pembayaran kontrak :</td></tr>
+            <tr><td></td><td colspan="4"><table class="tata" style="width:auto">
+              <tr><td style="width:6.4cm">Nilai Kontrak</td><td style="width:.8cm;text-align:center">=</td><td style="width:1.2cm">Rp.</td><td style="width:3.2cm;text-align:right">${Fmt.num(nilai, 2)}</td></tr>
+              <tr><td>Pembayaran BAP yang lalu</td><td style="text-align:center">=</td><td>Rp.</td><td style="text-align:right">${Fmt.num(0, 2)}</td></tr>
+              <tr><td>Pembayaran BAP ini</td><td style="text-align:center">=</td><td>Rp.</td><td style="text-align:right">${Fmt.num(nilai, 2)}</td></tr>
+              <tr><td>Pembayaran s.d. BAP ini</td><td style="text-align:center">=</td><td>Rp.</td><td style="text-align:right">${Fmt.num(nilai, 2)}</td></tr>
+              <tr><td>Sisa pembayaran kontrak s.d. BAP ini</td><td style="text-align:center">=</td><td>Rp.</td><td style="text-align:right">${Fmt.num(0, 2)}</td></tr>
+            </table></td></tr>
+          </table></td></tr>
+        <tr><td colspan="4" class="spasi"></td></tr>
+        <tr><td>C.</td><td colspan="3"><p style="margin:0"><b>Pihak Kedua</b> sepakat atas jumlah pembayaran tersebut di atas dibayarkan kepada <b>${E(v.bank || '..........')}</b> Rekening Nomor <b>${E(v.no_rekening || '..........')}</b> atas nama penyedia <b>${E(namaRek)}</b></p></td></tr>
+      </table>
+      <p style="margin-top:10px">Demikian Berita Acara Pembayaran ini dibuat dengan sebenarnya dalam rangkap 2 (dua) untuk dapat dipergunakan sebagaimana mestinya.</p>
+      <table class="ttd" style="margin-top:14px">
+        <tr><td colspan="2">Para Pihak :</td></tr>
+        <tr><td style="width:7.2cm;padding-top:12px">1. ${E(ppk.nama || '..................')}<br>&nbsp;&nbsp;&nbsp;&nbsp;Pejabat Pembuat Komitmen</td><td style="padding-top:12px">: ……………………………………………</td></tr>
+        <tr><td style="padding-top:26px">2. ${E(v.direktur || '..................')}<br>&nbsp;&nbsp;&nbsp;&nbsp;${E(v.jabatan_direktur || 'Direktur')} ${E(v.nama || '')}</td><td style="padding-top:26px">: ……………………………………………</td></tr>
+      </table>`;
+    return { judul: 'BA Pembayaran - ' + (pk.nama || ''), html: kop(s) + body };
   };
 
   T.monev = function (c) {

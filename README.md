@@ -125,23 +125,30 @@ sekali di halaman masuk, dan alamat itu akan tersimpan di perangkat masing-masin
 | 4 | Masukkan data penyedia sekali di awal — company profile yang diunggah akan dipakai ulang otomatis untuk paket lain dengan penyedia yang sama | **Penyedia** |
 | 5 | Buat paket pengadaan per satker: pilih jenis, isi pagu | **Paket pengadaan** |
 | 6 | Isi rincian HPS/RAB — tempel dari Excel, impor `.xlsx`, atau ketik manual | Tab **HPS/RAB** pada detail paket |
-| 7 | Unggah 13 dokumen wajib satu per satu | Tab **Berkas (13)** |
+| 7 | Unggah 15 dokumen wajib satu per satu | Tab **Berkas (15)** |
 | 8 | Setelah pekerjaan selesai: nilai realisasi tiap item HPS (jumlah diterima vs. direncanakan, keterangan bila ada selisih) dan unggah foto bukti/dokumentasi | Tab **Menilai (Monev)** |
 | 9 | Isi nomor & tanggal surat pada tab **Data paket**, lalu klik **Pratinjau** di sebelah nomor surat yang bersangkutan untuk cetak KAK/HPS/SK/BAST/Monev | Tab **Data paket** |
-| 10 | Pantau pita 13-segmen di Beranda — hijau penuh berarti paket itu *complete* secara dokumen | **Beranda** |
+| 10 | Pantau pita 15-segmen di Beranda — hijau penuh berarti paket itu *complete* secara dokumen | **Beranda** |
 
 ---
 
 ## 7. Dokumen dan penomoran
 
-### 13 dokumen wajib per paket
+### 15 dokumen wajib per paket
 SK PPK · SK PP · RUP · KAK+HPS+RAB · Surat Pesanan · Dokumentasi & surat jalan (sebelum/proses/
-setelah, multi-berkas) · BAST Inproc · BAST Manual · SPM · SP2D · Faktur & Bupot (hanya bila paket
-ditandai *Ada PPh*) · Company profile (otomatis terisi dari data Penyedia) · Hasil Monev &
+setelah, multi-berkas) · BAST Inaproc (**tidak diperlukan** untuk pemeliharaan gedung, RM maupun BOS) ·
+**BA Pemeriksaan Barang (8)** · BAST Manual (9) · **BA Pembayaran (10)** · SPM · SP2D · Faktur & Bupot
+(hanya bila paket ditandai *Ada PPh*) · Company profile (otomatis terisi dari data Penyedia) · Hasil Monev &
 dokumentasinya.
 
-### 6 dokumen yang bisa dibuat otomatis (tab Data paket)
-KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev — masing-masing punya field
+Urutan tampil = urutan larik `DOKUMEN` di `config.js`. Nomor di layar dihitung dari posisi (`dokNo()`), sedangkan
+`kode` adalah ID tetap di server (BA Pemeriksaan = 14, BA Pembayaran = 15) supaya berkas lama tidak bergeser.
+Nama berkas di Drive memakai `kode` sebagai awalan, jadi bisa berbeda dari nomor di layar.
+Aturan "tidak diperlukan" ditulis di `config.js` lewat properti `kecuali` (daftar id jenis pengadaan) dan
+dievaluasi oleh `dokPerlu()` untuk pita, tab Berkas, dan hitungan kelengkapan.
+
+### 8 dokumen yang bisa dibuat otomatis (tab Data paket)
+KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev, BA Pemeriksaan Barang, BA Pembayaran — masing-masing punya field
 nomor dan tanggal surat sendiri di tab **Data paket**, tepat di sebelahnya ada tombol **Pratinjau**
 (nonaktif dulu simpan perubahan bila nomor baru saja diubah, agar dokumen memuat nomor terbaru).
 Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu terisi otomatis dari data Satker, Penugasan, dan Paket.
@@ -150,8 +157,8 @@ Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu terisi otomatis dari data Satker, 
 menyusun dokumen, hanya menyimpan data dan berkas. Klik **Pratinjau** membuka jendela pop-up berisi
 dokumennya beserta tiga pilihan aksi di bagian bawah (`.modal-foot`): **Cetak / simpan PDF** (lewat
 dialog cetak peramban), **Unduh .doc** (bisa dibuka dan diedit lagi di Word), dan **Simpan ke berkas**
-(langsung mengunggah hasilnya sebagai salah satu dari 13 dokumen paket). Tombol Pratinjau yang sama
-juga muncul di tab **HPS / RAB** dan di tab **Berkas (13)** (kolom "Buat") untuk dokumen yang relevan.
+(langsung mengunggah hasilnya sebagai salah satu dari 15 dokumen paket). Tombol Pratinjau yang sama
+juga muncul di tab **HPS / RAB** dan di tab **Berkas (15)** (kolom "Buat") untuk dokumen yang relevan.
 
 ### Format kolom HPS/RAB
 Kolom kisi HPS otomatis mengikuti jenis pengadaan, dan bisa ditukar kapan pun lewat tombol
@@ -254,7 +261,8 @@ Simpan juga URL deployment (`/exec`) dan kredensial admin di tempat yang aman.
 
 ## 12. Pengembangan lanjutan (opsional, belum termasuk dalam versi ini)
 
-- Generator otomatis untuk **Surat Pesanan** dan **BAP** belum dibuat — permintaan awal hanya mencakup 6 dokumen (KAK, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev). Kedua dokumen ini tetap bisa diunggah manual sebagai berkas biasa.
+- Generator otomatis untuk **Surat Pesanan** belum dibuat; tetap bisa diunggah manual sebagai berkas biasa.
+- **BA Pembayaran** mengambil *Nilai kontrak* paket sebagai nilai yang sudah termasuk PPN, lalu memecahnya menjadi DPP + PPN (persen PPN mengikuti pengaturan HPS, baku 11%). Pembayaran diasumsikan sekali bayar 100%, addendum diisi "-". Bank & rekening diambil dari data Penyedia.
 - **31 KUA** perlu ditambahkan satu per satu lewat menu Satuan kerja (tidak semua KUA memiliki pengadaan setiap tahun — tandai lewat Penugasan → "Tidak ada pengadaan" agar tidak ikut dihitung dalam statistik kelengkapan).
 - Bila jumlah baris `Log` sangat besar di kemudian hari, pertimbangkan memindahkannya ke Spreadsheet terpisah agar `Config`/`Paket`/`Dokumen` tetap ringan dibaca.
 

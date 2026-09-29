@@ -4,7 +4,7 @@ window.CONFIG = {
   APP_NAME: 'PROCIMY',
   APP_LONG: 'Procurement Indramayu',
   INSTANSI: 'Kantor Kementerian Agama Kabupaten Indramayu',
-  VERSION: '1.0.0',
+  VERSION: '1.1.1',
 
   /* Tempel URL Web App Apps Script (.../exec) di sini.
      Boleh dibiarkan kosong: saat pertama dibuka, aplikasi meminta URL
@@ -48,14 +48,19 @@ window.CONFIG = {
     { kode: 5,  nama: 'Surat Pesanan' },
     { kode: 6,  nama: 'Dokumentasi dan surat jalan', multi: true,
       subs: ['Sebelum pengerjaan', 'Proses pengerjaan', 'Setelah pengerjaan', 'Surat jalan'] },
-    { kode: 7,  nama: 'BAST Inproc' },
+    { kode: 7,  nama: 'BAST Inaproc', kecuali: ['gedung_rm', 'gedung_bos'] },   // tidak diperlukan pada pemeliharaan gedung
+    { kode: 14, nama: 'BA Pemeriksaan Barang',            generate: 'bap' },
     { kode: 8,  nama: 'BAST Manual',                      generate: 'bast' },
+    { kode: 15, nama: 'BA Pembayaran',                    generate: 'bayar' },
     { kode: 9,  nama: 'SPM' },
     { kode: 10, nama: 'SP2D' },
     { kode: 11, nama: 'Faktur dan Bupot', bersyarat: 'ada_pph', multi: true },
     { kode: 12, nama: 'Company profile', dari: 'penyedia' },
     { kode: 13, nama: 'Hasil monev dan dokumentasi', multi: true, generate: 'monev' }
   ],
+  /* CATATAN: urutan larik = urutan tampil. "kode" adalah ID tetap yang tersimpan di server
+     (kolom Dokumen.kode) — jangan diubah untuk dokumen yang sudah punya berkas. Nomor yang
+     tampil di layar dihitung dari posisi larik lewat window.dokNo(). */
 
   GENERATOR: [
     { id: 'kak',    nama: 'KAK / Spesifikasi Teknis', field: 'no_kak',    kode: 4 },
@@ -63,6 +68,27 @@ window.CONFIG = {
     { id: 'sk_ppk', nama: 'SK PPK',                   field: 'no_sk_ppk', kode: 1 },
     { id: 'sk_pp',  nama: 'SK PP',                    field: 'no_sk_pp',  kode: 2 },
     { id: 'bast',   nama: 'BAST Manual',              field: 'no_bast',   kode: 8 },
-    { id: 'monev',  nama: 'Laporan Monev',            field: 'no_monev',  kode: 13 }
+    { id: 'monev',  nama: 'Laporan Monev',            field: 'no_monev',  kode: 13 },
+    { id: 'bap',    nama: 'BA Pemeriksaan Barang',    field: 'no_bap',    kode: 14 },
+    { id: 'bayar',  nama: 'BA Pembayaran',            field: 'no_bayar',  kode: 15 }
   ]
+};
+
+/* Apakah dokumen d diperlukan untuk paket ini? Dipakai pita, tab Berkas, dan hitungan kelengkapan.
+   - bersyarat: hanya bila field paket bernilai benar (mis. ada_pph)
+   - kecuali  : tidak diperlukan untuk jenis pengadaan yang tercantum */
+window.dokPerlu = function (d, paket) {
+  if (d.kecuali && paket && d.kecuali.indexOf(paket.jenis) >= 0) return false;
+  if (d.bersyarat && !(paket && paket[d.bersyarat])) return false;
+  return true;
+};
+/* nomor tampil (1..n) = posisi dokumen dalam daftar, bukan nilai kode */
+window.dokNo = function (kode) {
+  var l = window.CONFIG.DOKUMEN;
+  for (var i = 0; i < l.length; i++) if (String(l[i].kode) === String(kode)) return i + 1;
+  return kode;
+};
+/* cari definisi dokumen berdasarkan kode (jangan memakai indeks larik) */
+window.dokByKode = function (kode) {
+  return window.CONFIG.DOKUMEN.filter(function (d) { return String(d.kode) === String(kode); })[0] || null;
 };

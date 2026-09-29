@@ -198,7 +198,7 @@
   function hitungLengkap(p) {
     var perlu = 0, ada = 0;
     C.DOKUMEN.forEach(function (d) {
-      if (d.bersyarat && !p[d.bersyarat]) return;
+      if (!w.dokPerlu(d, p)) return;
       perlu++;
       if (p.dok && p.dok[d.kode]) ada++;
     });
@@ -233,7 +233,7 @@
           el('div.n', { text: 'Nilai kontrak ' + Fmt.rpShort(nilai) })]),
         el('div.stat', null, [el('div.k', { text: 'Kelengkapan berkas' }),
           el('div.v', { text: (milik.length ? Math.round(lengkap / milik.length * 100) : 0) + '%' }),
-          el('div.n', { text: 'paket dengan 13 dokumen terpenuhi' })])
+          el('div.n', { text: 'paket dengan seluruh dokumen wajib terpenuhi' })])
       ]);
 
       var baris = satker.map(function (s) {

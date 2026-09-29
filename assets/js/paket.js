@@ -153,7 +153,7 @@
       var tabs = [
         { id: 'umum', label: 'Data paket', render: tabUmum },
         { id: 'hps', label: 'HPS / RAB', render: tabHPS },
-        { id: 'dok', label: 'Berkas (13)', render: tabDok },
+        { id: 'dok', label: 'Berkas (' + C.DOKUMEN.length + ')', render: tabDok },
         { id: 'monev', label: 'Menilai (Monev)', render: tabMonev }
       ];
       var aktif = (ctx.params && ctx.params.tab) || 'umum';
@@ -237,7 +237,8 @@
           { k: 'sk_ppk', l: 'SK PPK', gen: 'sk_ppk' }, { k: 'sk_pp', l: 'SK PP', gen: 'sk_pp' },
           { k: 'kak', l: 'KAK', gen: 'kak' }, { k: 'hps', l: 'HPS', gen: 'hps' },
           { k: 'sp', l: 'Surat Pesanan / SPK' }, { k: 'bast', l: 'BAST', gen: 'bast' },
-          { k: 'bap', l: 'BAP' }, { k: 'monev', l: 'Laporan Monev', gen: 'monev' }
+          { k: 'bap', l: 'BA Pemeriksaan Barang', gen: 'bap' }, { k: 'bayar', l: 'BA Pembayaran', gen: 'bayar' },
+          { k: 'monev', l: 'Laporan Monev', gen: 'monev' }
         ].forEach(function (x) {
           formNo.appendChild(el('div', null, [
             el('div.baris', { style: 'justify-content:space-between;margin-bottom:8px' }, [
@@ -330,10 +331,10 @@
           var m = petaDok();
           clear(daftar);
           C.DOKUMEN.forEach(function (d) {
-            var perlu = !d.bersyarat || p[d.bersyarat];
+            var perlu = w.dokPerlu(d, p);
             var berkas = m[d.kode] || [];
             var item = el('div.dok-item' + (berkas.length ? '.ada' : '') + (!perlu ? '.na' : ''), null, [
-              el('div.dok-no', { text: String(d.kode) }),
+              el('div.dok-no', { text: String(w.dokNo(d.kode)) }),
               el('div', null, [
                 el('div.dok-nama', { text: d.nama }),
                 !perlu ? el('div.dok-file', null, [el('span.diam', { text: 'Tidak diperlukan untuk paket ini' })]) :
@@ -380,7 +381,7 @@
         }
         gambar();
         host2.appendChild(el('div.kartu', null, [
-          el('header', null, [el('h2', { text: 'Kelengkapan 13 dokumen' }),
+          el('header', null, [el('h2', { text: 'Kelengkapan ' + C.DOKUMEN.length + ' dokumen' }),
             el('span.kanan.mini', { text: 'Berkas tersimpan di folder Drive satker' })]),
           el('div.badan', null, [daftar])
         ]));
@@ -477,7 +478,7 @@
           tandai();
         }
 
-        /* ---------- foto dokumentasi (tersimpan sebagai berkas dokumen #13) ---------- */
+        /* ---------- foto dokumentasi (tersimpan sebagai berkas dokumen "Hasil monev dan dokumentasi") ---------- */
         var fotoWrap = el('div.foto-grid');
         function gambarFoto() {
           clear(fotoWrap);
@@ -538,7 +539,7 @@
           form,
           el('div.kartu', null, [
             el('header', null, [el('h2', { text: 'Dokumentasi foto' }),
-              el('span.kanan.mini', { text: 'Tersimpan di folder Drive satker, sebagai berkas dokumen #13' })]),
+              el('span.kanan.mini', { text: 'Tersimpan di folder Drive satker, sebagai berkas nomor ' + w.dokNo(13) })]),
             el('div.badan', null, [fotoWrap])
           ]),
           el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan penilaian')])
@@ -565,7 +566,7 @@
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
           nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),
           no_sp: m.no_sp, tgl_sp: m.tgl_sp, no_sk_ppk: m.no_sk_ppk, tgl_sk_ppk: m.tgl_sk_ppk,
-          no_bap: m.no_bap, tgl_bap: m.tgl_bap
+          no_bap: m.no_bap, tgl_bap: m.tgl_bap, no_bayar: m.no_bayar, tgl_bayar: m.tgl_bayar
         };
       }
       function cetakDok(id) {
@@ -581,11 +582,11 @@
           UI.toast('Mengunggah ' + r.nama + '…');
           return Unggah.kirim(file, { paket_id: p.id, kode: g.kode, keterangan: 'dibuat otomatis' });
         }).then(function (row) {
-          dok = dok.filter(function (x) { return String(x.kode) !== String(g.kode) || C.DOKUMEN[g.kode - 1].multi; });
+          dok = dok.filter(function (x) { return String(x.kode) !== String(g.kode) || (w.dokByKode(g.kode) || {}).multi; });
           dok.push(row);
           Store.drop('paket.' + App.state.tahun);
           gambarRingkas();
-          UI.toast('Dokumen tersimpan sebagai berkas nomor ' + g.kode, 'ok');
+          UI.toast('Dokumen tersimpan sebagai berkas nomor ' + w.dokNo(g.kode), 'ok');
         }).catch(UI.err);
       }
 
