@@ -33,6 +33,11 @@ window.CONFIG = {
      untuk metode di luar daftar (termasuk data lama yang sudah tersimpan). */
   METODE_PENGADAAN: ['Pengadaan Langsung', 'Penunjukan Langsung', 'E-Purchasing', 'Tender Cepat', 'Tender', 'Swakelola'],
 
+  /* opsi combobox "Jenis kontrak" (berdasarkan cara pembayaran). Nilai yang tersimpan = teks
+     opsinya, dan dicetak apa adanya di KAK. Nilai lama di luar daftar tetap dipertahankan. */
+  JENIS_KONTRAK: ['Kontrak Harga Satuan', 'Kontrak Lumsum', 'Kontrak Gabungan Lumsum dan Harga Satuan',
+    'Kontrak Putar Kunci (Turnkey)', 'Kontrak Persentase'],
+
   /* 13 syarat dokumen. generate = template cetak lokal yang tersedia.
      multi = boleh banyak berkas. bersyarat = hanya wajib bila kondisi terpenuhi. */
   DOKUMEN: [

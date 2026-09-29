@@ -60,6 +60,11 @@ Tidak ada langkah *build*. Berkas-berkas ini bisa langsung disajikan apa adanya 
    - Klik **Deploy**, izinkan lagi bila diminta.
 7. Salin URL yang muncul — harus berakhiran **`/exec`**. Inilah alamat server SIPADU.
 
+> **Memperbarui skema setelah menarik versi baru:** bila `Code.gs` menambah kolom baru pada
+> sheet yang sudah berjalan (mis. data rekening pada `Penyedia`), jalankan ulang fungsi
+> **`setup()`** sekali dari Apps Script editor. Header kolom baru otomatis dilengkapi di
+> ujung kanan setiap sheet yang sudah ada — data yang sudah tersimpan tidak disentuh.
+
 > (Opsional) Jalankan juga fungsi **`isiContohSatker`** dari dropdown yang sama untuk mengisi kerangka satker MAN, MIN, MTsN, PENDIS, dan SEKJEN secara otomatis. 31 KUA tetap perlu ditambahkan manual lewat aplikasi karena tidak semua KUA memiliki pengadaan setiap tahun.
 
 ---

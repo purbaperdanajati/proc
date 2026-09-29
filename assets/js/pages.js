@@ -447,20 +447,15 @@
     var q = '', isi = el('div');
 
     function gambar() {
-      var list = (App.state.master.penyedia || []).filter(function (p) { return cocok(p, q, ['nama', 'direktur', 'npwp', 'alamat', 'no_hp', 'bank', 'no_rekening']); });
+      var list = (App.state.master.penyedia || []).filter(function (p) { return cocok(p, q, ['nama', 'direktur', 'npwp', 'alamat']); });
       clear(isi).appendChild(list.length ? UI.table([
         { label: 'Penyedia', render: function (p) {
           return el('div', null, [el('span.tegas', { text: p.nama }), el('span.sub', { text: p.alamat || '-' })]);
         } },
         { label: 'Direktur', render: function (p) {
-          return el('div.tumpuk', null, [el('span', { text: p.direktur || '-' }), el('span.sub', { text: p.jabatan_direktur || 'Direktur' }), p.no_hp ? el('span.sub', { text: p.no_hp }) : null]);
+          return el('div.tumpuk', null, [el('span', { text: p.direktur || '-' }), el('span.sub', { text: p.jabatan_direktur || 'Direktur' })]);
         } },
         { label: 'NPWP', key: 'npwp' },
-        { label: 'Rekening', render: function (p) {
-          return p.no_rekening
-            ? el('div', null, [el('span.tegas', { text: (p.bank || '-') + ' — ' + p.no_rekening }), el('span.sub', { text: 'a.n. ' + (p.nama_rekening || '-') })])
-            : el('span.sub', { text: '-' });
-        } },
         { label: 'Company profile', render: function (p) {
           return p.cp_url
             ? el('a', { href: p.cp_url, target: '_blank', rel: 'noopener' }, 'Lihat berkas')
@@ -485,13 +480,13 @@
         { name: 'jabatan_direktur', label: 'Jabatan', placeholder: 'Direktur' },
         { name: 'npwp', label: 'NPWP' },
         { name: 'telp', label: 'Telepon' },
-        { name: 'no_hp', label: 'Nomor HP', type: 'tel', placeholder: '08xxxxxxxxxx' },
+        { name: 'nomor_hp', label: 'Nomor HP' },
         { name: 'email', label: 'Email' },
         { name: 'bentuk', label: 'Bentuk usaha', type: 'select', options: ['CV', 'PT', 'UD', 'Perorangan', 'Koperasi'].map(function (x) { return { value: x, label: x }; }) },
         { name: 'alamat', label: 'Alamat', wide: true, type: 'textarea', rows: 2 },
         { name: 'bank', label: 'Bank', placeholder: 'mis. BRI' },
-        { name: 'no_rekening', label: 'Nomor rekening' },
-        { name: 'nama_rekening', label: 'Nama pemilik rekening', wide: true }
+        { name: 'no_rekening', label: 'Nomor Rekening' },
+        { name: 'nama_rekening', label: 'Nama Rekening', wide: true, placeholder: 'Sesuai buku tabungan/rekening koran' }
       ], p, function (data) {
         data.id = p ? p.id : '';
         return simpanEntitas('Penyedia', data).then(gambar);
@@ -499,7 +494,7 @@
     }
 
     clear(host).appendChild(el('div', null, [
-      el('div.filter', null, [cariBox('Cari penyedia, direktur, NPWP, bank…', function (v) { q = v; gambar(); })]),
+      el('div.filter', null, [cariBox('Cari penyedia, direktur, NPWP…', function (v) { q = v; gambar(); })]),
       el('div.kartu', null, [isi])
     ]));
     gambar();
@@ -596,13 +591,32 @@
         });
     }
     function sandi(u) {
-      formModal('Atur ulang sandi ' + u.nama, [
-        { name: 'password', label: 'Kata sandi baru', type: 'password', required: true, wide: true, hint: 'Minimal 8 karakter. Sampaikan langsung kepada yang bersangkutan.' }
+      var form = formModal('Atur ulang sandi ' + u.nama, [
+        { name: 'password', label: 'Kata sandi baru', type: 'password', required: true, wide: true, hint: 'Minimal 8 karakter. Sampaikan langsung kepada yang bersangkutan.' },
+        { name: 'password2', label: 'Ulangi kata sandi baru', type: 'password', required: true, wide: true }
       ], null, function (data) {
-        if (data.password.length < 8) throw new Error('Kata sandi minimal 8 karakter.');
+        if (data.password.length < 8) return Promise.reject(new Error('Kata sandi minimal 8 karakter.'));
+        if (data.password !== data.password2) return Promise.reject(new Error('Kata sandi baru dan pengulangannya tidak sama.'));
         return API.call('resetPassword', { id: u.id, password: data.password }, { jsonp: false })
           .then(function () { UI.toast('Sandi diperbarui', 'ok'); });
       }, { kolom: 1 });
+
+      /* tombol lihat/sembunyikan untuk field #f_password, agar admin bisa memeriksa
+         ketikannya sendiri sebelum menyimpan (selain lewat pengulangan di atas) */
+      var inputSandi = form.querySelector('#f_password');
+      if (inputSandi) {
+        var labelSandi = inputSandi.closest('label.field');
+        var hintSandi = labelSandi.querySelector('small.hint');
+        var tombolLihat = el('button.btn.kecil', {
+          type: 'button', style: 'justify-self:start',
+          onclick: function () {
+            var buka = inputSandi.type === 'password';
+            inputSandi.type = buka ? 'text' : 'password';
+            tombolLihat.textContent = buka ? 'Sembunyikan sandi' : 'Lihat sandi';
+          }
+        }, 'Lihat sandi');
+        if (hintSandi) labelSandi.insertBefore(tombolLihat, hintSandi); else labelSandi.appendChild(tombolLihat);
+      }
     }
 
     clear(host).appendChild(el('div.kartu', null, [isi]));
@@ -623,22 +637,6 @@
       { name: 'folder_root', label: 'ID folder Drive induk', value: cfg.folder_root || '', hint: 'Dibuat otomatis saat setup. Ubah hanya bila folder dipindah.' }
     ].forEach(function (f) { form.appendChild(UI.field(f)); });
 
-    var koneksi = el('div.rapi', null, [
-      UI.field({ label: 'Alamat Web App', name: 'api', value: API.url(), wide: true, hint: 'Akhiri dengan /exec. Ganti setiap kali Anda membuat deployment baru.' }),
-      el('div.baris', null, [
-        el('button.btn', { onclick: function () {
-          var v = koneksi.querySelector('[name="api"]').value.trim();
-          if (!/\/exec$/.test(v)) return UI.toast('Alamat harus berakhiran /exec', 'bad');
-          API.setUrl(v); UI.toast('Alamat tersimpan. Memuat ulang…', 'ok');
-          setTimeout(function () { location.reload(); }, 800);
-        } }, 'Simpan alamat'),
-        el('button.btn', { onclick: function () {
-          API.call('ping', {}).then(function (r) { UI.toast('Server menjawab. Versi data ' + (r.versi || '-'), 'ok'); }).catch(UI.err);
-        } }, 'Tes koneksi'),
-        el('button.btn', { onclick: function () { Store.dropAll(); UI.toast('Cache perangkat dibersihkan', 'ok'); setTimeout(function () { location.reload(); }, 600); } }, 'Bersihkan cache')
-      ])
-    ]);
-
     clear(host).appendChild(el('div.rapi', null, [
       el('div.kartu', null, [
         el('header', null, [el('h2', { text: 'Identitas kantor' })]),
@@ -649,19 +647,6 @@
                 .then(function () { UI.toast('Pengaturan tersimpan', 'ok'); return App.segarkan(); }).catch(UI.err);
             } }, 'Simpan pengaturan')
           ])])
-      ]),
-      el('div.kartu', null, [
-        el('header', null, [el('h2', { text: 'Koneksi server' })]),
-        el('div.badan', null, [koneksi])
-      ]),
-      el('div.kartu', null, [
-        el('header', null, [el('h2', { text: 'Catatan pemeliharaan' })]),
-        el('div.badan', null, [el('div.mini', { html:
-          '<p>Setiap kali kode Apps Script diubah, buat <b>versi baru</b> pada deployment yang sama ' +
-          '(Deploy → Kelola deployment → ikon pensil → Version: New version). Membuat deployment baru akan ' +
-          'mengubah URL dan menyebabkan galat 404 di semua perangkat.</p>' +
-          '<p>Data disimpan di Google Spreadsheet, berkas di Google Drive. Cukup salin kedua-duanya untuk membuat cadangan.</p>' }
-        )])
       ])
     ]));
   };
