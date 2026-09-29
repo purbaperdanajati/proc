@@ -447,15 +447,20 @@
     var q = '', isi = el('div');
 
     function gambar() {
-      var list = (App.state.master.penyedia || []).filter(function (p) { return cocok(p, q, ['nama', 'direktur', 'npwp', 'alamat']); });
+      var list = (App.state.master.penyedia || []).filter(function (p) { return cocok(p, q, ['nama', 'direktur', 'npwp', 'alamat', 'no_hp', 'bank', 'no_rekening']); });
       clear(isi).appendChild(list.length ? UI.table([
         { label: 'Penyedia', render: function (p) {
           return el('div', null, [el('span.tegas', { text: p.nama }), el('span.sub', { text: p.alamat || '-' })]);
         } },
         { label: 'Direktur', render: function (p) {
-          return el('div.tumpuk', null, [el('span', { text: p.direktur || '-' }), el('span.sub', { text: p.jabatan_direktur || 'Direktur' })]);
+          return el('div.tumpuk', null, [el('span', { text: p.direktur || '-' }), el('span.sub', { text: p.jabatan_direktur || 'Direktur' }), p.no_hp ? el('span.sub', { text: p.no_hp }) : null]);
         } },
         { label: 'NPWP', key: 'npwp' },
+        { label: 'Rekening', render: function (p) {
+          return p.no_rekening
+            ? el('div', null, [el('span.tegas', { text: (p.bank || '-') + ' — ' + p.no_rekening }), el('span.sub', { text: 'a.n. ' + (p.nama_rekening || '-') })])
+            : el('span.sub', { text: '-' });
+        } },
         { label: 'Company profile', render: function (p) {
           return p.cp_url
             ? el('a', { href: p.cp_url, target: '_blank', rel: 'noopener' }, 'Lihat berkas')
@@ -480,9 +485,13 @@
         { name: 'jabatan_direktur', label: 'Jabatan', placeholder: 'Direktur' },
         { name: 'npwp', label: 'NPWP' },
         { name: 'telp', label: 'Telepon' },
+        { name: 'no_hp', label: 'Nomor HP', type: 'tel', placeholder: '08xxxxxxxxxx' },
         { name: 'email', label: 'Email' },
         { name: 'bentuk', label: 'Bentuk usaha', type: 'select', options: ['CV', 'PT', 'UD', 'Perorangan', 'Koperasi'].map(function (x) { return { value: x, label: x }; }) },
-        { name: 'alamat', label: 'Alamat', wide: true, type: 'textarea', rows: 2 }
+        { name: 'alamat', label: 'Alamat', wide: true, type: 'textarea', rows: 2 },
+        { name: 'bank', label: 'Bank', placeholder: 'mis. BRI' },
+        { name: 'no_rekening', label: 'Nomor rekening' },
+        { name: 'nama_rekening', label: 'Nama pemilik rekening', wide: true }
       ], p, function (data) {
         data.id = p ? p.id : '';
         return simpanEntitas('Penyedia', data).then(gambar);
@@ -490,7 +499,7 @@
     }
 
     clear(host).appendChild(el('div', null, [
-      el('div.filter', null, [cariBox('Cari penyedia, direktur, NPWP…', function (v) { q = v; gambar(); })]),
+      el('div.filter', null, [cariBox('Cari penyedia, direktur, NPWP, bank…', function (v) { q = v; gambar(); })]),
       el('div.kartu', null, [isi])
     ]));
     gambar();
