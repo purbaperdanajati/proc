@@ -271,6 +271,25 @@
     return { judul: 'HPS - ' + (pk.nama || ''), html: kop(s) + body };
   };
 
+  /* dokumen gabungan untuk syarat #4 "KAK, HPS + RAB": KAK/Spesifikasi Teknis
+     (tanpa harga) diikuti HPS (dengan harga, PPN, total) di halaman baru --
+     satu berkas, tapi masing-masing tetap memakai nomor & tanggal suratnya
+     sendiri (no_kak/tgl_kak, no_hps/tgl_hps) dari data paket. */
+  T.kak_hps = function (c) {
+    var pk = c.paket || {}, m = pk.meta || {};
+    function salin(tambahan) {
+      var o = {}; for (var k in c) o[k] = c[k];
+      for (var k2 in tambahan) o[k2] = tambahan[k2];
+      return o;
+    }
+    var kak = T.kak(salin({ nomor: m.no_kak || '', tanggal: m.tgl_kak || new Date() }));
+    var hps = T.hps(salin({ nomor: m.no_hps || '', tanggal: m.tgl_hps || new Date() }));
+    return {
+      judul: 'KAK, HPS & RAB - ' + (pk.nama || ''),
+      html: kak.html + '<div class="lampiran">' + hps.html + '</div>'
+    };
+  };
+
   T.bast = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
     var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';

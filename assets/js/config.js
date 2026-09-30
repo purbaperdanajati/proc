@@ -44,7 +44,7 @@ window.CONFIG = {
     { kode: 1,  nama: 'SK PPK',                          generate: 'sk_ppk' },
     { kode: 2,  nama: 'SK PP',                            generate: 'sk_pp' },
     { kode: 3,  nama: 'RUP' },
-    { kode: 4,  nama: 'KAK, HPS + RAB',                   generate: 'kak' },
+    { kode: 4,  nama: 'KAK, HPS + RAB',                   generate: 'kak_hps' },
     { kode: 5,  nama: 'Surat Pesanan' },
     { kode: 6,  nama: 'Dokumentasi dan surat jalan', multi: true,
       subs: ['Sebelum pengerjaan', 'Proses pengerjaan', 'Setelah pengerjaan', 'Surat jalan'] },
@@ -63,6 +63,7 @@ window.CONFIG = {
      tampil di layar dihitung dari posisi larik lewat window.dokNo(). */
 
   GENERATOR: [
+    { id: 'kak_hps', nama: 'KAK, HPS & RAB (gabungan)',  field: 'no_kak',    kode: 4 },
     { id: 'kak',    nama: 'KAK / Spesifikasi Teknis', field: 'no_kak',    kode: 4 },
     { id: 'hps',    nama: 'HPS dan RAB',              field: 'no_hps',    kode: 4 },
     { id: 'sk_ppk', nama: 'SK PPK',                   field: 'no_sk_ppk', kode: 1 },

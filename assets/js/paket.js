@@ -153,7 +153,7 @@
       var tabs = [
         { id: 'umum', label: 'Data paket', render: tabUmum },
         { id: 'hps', label: 'HPS / RAB', render: tabHPS },
-        { id: 'dok', label: 'Berkas (' + C.DOKUMEN.length + ')', render: tabDok },
+        { id: 'dok', label: 'Berkas (13)', render: tabDok },
         { id: 'monev', label: 'Menilai (Monev)', render: tabMonev }
       ];
       var aktif = (ctx.params && ctx.params.tab) || 'umum';
@@ -224,6 +224,7 @@
         form.appendChild(fJenisKontrak);
         form.appendChild(kotakKontrakLain);
         [
+          { name: 'jenis_kontrak', label: 'Jenis kontrak', value: p.jenis_kontrak || 'Kontrak Harga Satuan' },
           { name: 'jangka_waktu', label: 'Jangka waktu (hari kalender)', type: 'number', value: p.jangka_waktu || 14 },
           { name: 'sumber_dana', label: 'Sumber dana', value: p.sumber_dana || App.jenis(p.jenis).sumber },
           { name: 'lokasi', label: 'Lokasi pekerjaan', value: p.lokasi || s.nama, wide: true },
@@ -316,7 +317,6 @@
           el('header', null, [
             el('h2', { text: 'Rincian HPS / RAB' }),
             el('div.kanan.baris', null, [
-              el('button.btn.kecil', { onclick: function () { cetakDok('hps'); } }, 'Pratinjau HPS'),
               el('button.btn.primary.kecil', { onclick: function (e) { simpan(e); } }, 'Simpan rincian')
             ])
           ]),
@@ -331,10 +331,10 @@
           var m = petaDok();
           clear(daftar);
           C.DOKUMEN.forEach(function (d) {
-            var perlu = w.dokPerlu(d, p);
+            var perlu = !d.bersyarat || p[d.bersyarat];
             var berkas = m[d.kode] || [];
             var item = el('div.dok-item' + (berkas.length ? '.ada' : '') + (!perlu ? '.na' : ''), null, [
-              el('div.dok-no', { text: String(w.dokNo(d.kode)) }),
+              el('div.dok-no', { text: String(d.kode) }),
               el('div', null, [
                 el('div.dok-nama', { text: d.nama }),
                 !perlu ? el('div.dok-file', null, [el('span.diam', { text: 'Tidak diperlukan untuk paket ini' })]) :
@@ -381,7 +381,7 @@
         }
         gambar();
         host2.appendChild(el('div.kartu', null, [
-          el('header', null, [el('h2', { text: 'Kelengkapan ' + C.DOKUMEN.length + ' dokumen' }),
+          el('header', null, [el('h2', { text: 'Kelengkapan 13 dokumen' }),
             el('span.kanan.mini', { text: 'Berkas tersimpan di folder Drive satker' })]),
           el('div.badan', null, [daftar])
         ]));
@@ -428,7 +428,7 @@
             el('div.baris', { style: 'justify-content:space-between;align-items:flex-start;margin-bottom:10px' }, [
               el('div', null, [
                 el('div.judul-item', { text: (i + 1) + '. ' + it.uraian }),
-                el('div.rencana-item', { text: 'Volume: ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') })
+                el('div.rencana-item', { text: 'Rencana: ' + (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '') })
               ]),
               badge
             ]),
@@ -478,7 +478,7 @@
           tandai();
         }
 
-        /* ---------- foto dokumentasi (tersimpan sebagai berkas dokumen "Hasil monev dan dokumentasi") ---------- */
+        /* ---------- foto dokumentasi (tersimpan sebagai berkas dokumen #13) ---------- */
         var fotoWrap = el('div.foto-grid');
         function gambarFoto() {
           clear(fotoWrap);
@@ -539,7 +539,7 @@
           form,
           el('div.kartu', null, [
             el('header', null, [el('h2', { text: 'Dokumentasi foto' }),
-              el('span.kanan.mini', { text: 'Tersimpan di folder Drive satker, sebagai berkas nomor ' + w.dokNo(13) })]),
+              el('span.kanan.mini', { text: 'Tersimpan di folder Drive satker, sebagai berkas dokumen #13' })]),
             el('div.badan', null, [fotoWrap])
           ]),
           el('div.baris', null, [el('button.btn.primary', { onclick: function (e) { simpan(e); } }, 'Simpan penilaian')])
@@ -566,7 +566,7 @@
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
           nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),
           no_sp: m.no_sp, tgl_sp: m.tgl_sp, no_sk_ppk: m.no_sk_ppk, tgl_sk_ppk: m.tgl_sk_ppk,
-          no_bap: m.no_bap, tgl_bap: m.tgl_bap, no_bayar: m.no_bayar, tgl_bayar: m.tgl_bayar
+          no_bap: m.no_bap, tgl_bap: m.tgl_bap
         };
       }
       function cetakDok(id) {
@@ -582,11 +582,11 @@
           UI.toast('Mengunggah ' + r.nama + '…');
           return Unggah.kirim(file, { paket_id: p.id, kode: g.kode, keterangan: 'dibuat otomatis' });
         }).then(function (row) {
-          dok = dok.filter(function (x) { return String(x.kode) !== String(g.kode) || (w.dokByKode(g.kode) || {}).multi; });
+          dok = dok.filter(function (x) { return String(x.kode) !== String(g.kode) || C.DOKUMEN[g.kode - 1].multi; });
           dok.push(row);
           Store.drop('paket.' + App.state.tahun);
           gambarRingkas();
-          UI.toast('Dokumen tersimpan sebagai berkas nomor ' + w.dokNo(g.kode), 'ok');
+          UI.toast('Dokumen tersimpan sebagai berkas nomor ' + g.kode, 'ok');
         }).catch(UI.err);
       }
 
