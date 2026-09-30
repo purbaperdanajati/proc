@@ -42,11 +42,11 @@
     return m;
   }
   function templateBarang() {
-    var m = kosong(4, 6);
-    var h = ['NO.', 'NAMA', 'SPESIFIKASI', 'VOL', 'HARGA SATUAN', 'JUMLAH'];
+    var m = kosong(4, 7);
+    var h = ['NO.', 'NAMA', 'SPESIFIKASI', 'VOL', 'SATUAN', 'HARGA SATUAN', 'JUMLAH'];
     m.rows[0] = h.map(function (t) { return sel(t, { b: true }); });
     m.header = 0;
-    m.map = { no: 0, uraian: 1, volume: 3, harga: 4, jumlah: 5 };
+    m.map = { no: 0, uraian: 1, volume: 3, satuan: 4, harga: 5, jumlah: 6 };
     m.tipe = 'barang';
     return m;
   }
