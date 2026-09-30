@@ -207,6 +207,41 @@ button.icon { background: none; border: 0; font-size: 20px; line-height: 1; curs
 .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 13px 18px; border-top: 1px solid var(--garis); background: var(--papan); border-radius: 0 0 10px 10px; }
 @keyframes masuk { from { opacity: 0; } to { opacity: 1; } }
 
+/* ---------- pratinjau berkas (modal penuh + panggung geser/perbesar) ---------- */
+.modal.penuh { width: min(1240px, 100%); height: 92vh; }
+.modal.penuh .modal-body { padding: 0; overflow: hidden; flex: 1; display: flex; }
+@media (max-width: 720px) { .modal.penuh { width: 100%; height: 100%; max-height: 100%; border-radius: 0; } }
+
+.pv-panggung {
+  position: relative; flex: 1; overflow: hidden; background: #12201a;
+  touch-action: none; display: flex;
+}
+.pv-muat, .pv-panggung .empty { margin: auto; color: #cfe3d6; }
+.pv-panggung .empty-t, .pv-panggung .empty-p { color: #eaf3ec; }
+.pv-bungkus {
+  margin: auto; cursor: grab; transition: transform .04s linear;
+  display: flex; touch-action: none;
+}
+.pv-bungkus.menyeret { cursor: grabbing; transition: none; }
+.pv-bungkus img, .pv-bungkus canvas {
+  display: block; max-width: none; background: #fff; user-select: none;
+  -webkit-user-drag: none; box-shadow: 0 6px 30px rgba(0,0,0,.4);
+}
+.pv-alat {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; background: rgba(10,22,15,.78);
+  backdrop-filter: blur(6px); padding: 6px; border-radius: 11px; z-index: 2;
+}
+.pv-alat button {
+  width: 36px; height: 36px; display: grid; place-items: center; border: 0;
+  border-radius: 8px; background: transparent; color: #eaf3ec; font-size: 17px;
+  cursor: pointer; line-height: 1;
+}
+.pv-alat button:hover { background: rgba(255,255,255,.14); }
+.pv-alat button:active { background: rgba(255,255,255,.22); }
+.pv-pisah { width: 1px; align-self: stretch; background: rgba(255,255,255,.2); margin: 4px 2px; }
+.pv-hal { color: #eaf3ec; font-size: 12.5px; min-width: 54px; text-align: center; padding: 0 2px; }
+
 #toast { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: grid; gap: 8px; max-width: 380px; }
 .toast {
   background: #10301f; color: #eaf3ec; padding: 11px 15px; border-radius: var(--r);

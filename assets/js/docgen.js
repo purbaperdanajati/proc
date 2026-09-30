@@ -274,7 +274,15 @@
   T.bast = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {};
     var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';
-    var tabelBarang = tabelBarangHTML(c);
+    var items = itemHPS(c.hps);
+    var tabelBarang = items.length
+      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb">Uraian Barang</td>' +
+        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
+        items.map(function (it, i) {
+          return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
+            '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<p class="kecil">Rincian barang belum diisi pada HPS/RAB.</p>';
     var body = `
       <h1 class="judul garis">BERITA ACARA SERAH TERIMA PEKERJAAN</h1>
       <p class="nomor">Nomor : ${E(c.nomor || '..........')}</p>
@@ -525,7 +533,14 @@
         var aksi = [
           { label: 'Tutup' },
           { label: 'Unduh .doc', onclick: function () { Doc.unduh(id, ctx); return false; }, close: false },
-          { label: 'Cetak / simpan PDF', onclick: function () { frame.contentWindow.focus(); frame.contentWindow.print(); return false; }, close: false }
+          { label: 'Cetak', onclick: function () { frame.contentWindow.focus(); frame.contentWindow.print(); return false; }, close: false },
+          {
+            label: 'Unduh .pdf', kind: 'primary', close: false, onclick: function (_, btn) {
+              var pulih = UI.busy(btn, 'Menyiapkan PDF…');
+              Doc.unduhPdf(id, ctx).catch(UI.err).then(pulih);
+              return false;
+            }
+          }
         ];
         if (opsi.simpanKeBerkas) {
           aksi.push({ label: 'Simpan ke berkas', kind: 'primary', onclick: function () { opsi.simpanKeBerkas(); return false; }, close: false });
@@ -565,6 +580,101 @@
         document.body.appendChild(a); a.click();
         setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
         UI.toast('Dokumen diunduh. Buka dengan Word lalu simpan sebagai .docx bila perlu diubah.', 'ok');
+      });
+    },
+    /* unduh sebagai berkas .pdf sungguhan, tanpa lewat dialog cetak peramban.
+       Dirender di iframe tersembunyi (ukuran cetak A4, tanpa padding bawaan --
+       margin ditangani di bawah supaya SETIAP halaman hasil potongan punya
+       margin yang sama, bukan cuma halaman pertama/terakhir), dirasterisasi
+       SEKALI oleh html2canvas, lalu kanvas itu dipotong sendiri per halaman:
+       titik potong dicari pada baris piksel yang nyaris putih (celah antar
+       baris/paragraf) di sekitar tinggi satu halaman, supaya baris tabel atau
+       teks tidak pernah terpotong tepat di batas kertas. (Fungsi bawaan jsPDF
+       pdf.html()/autoPaging tidak dipakai -- pada dokumen panjang/bertabel ia
+       bisa salah hitung skala dan menghasilkan ribuan halaman kosong.) */
+    unduhPdf: function (id, ctx) {
+      return siapkan(id, ctx).then(function (d) {
+        var jsPDFCtor = (w.jspdf && w.jspdf.jsPDF) || w.jsPDF;
+        if (!jsPDFCtor || !w.html2canvas) {
+          UI.toast('Pustaka pembuat PDF belum termuat. Periksa berkas pustaka di assets/js/lib/ lalu muat ulang halaman.', 'bad');
+          return Promise.reject(new Error('Pustaka PDF tidak tersedia.'));
+        }
+        return new Promise(function (resolve, reject) {
+          var ifr = el('iframe', { style: 'position:fixed;left:-99999px;top:0;width:900px;height:0;border:0' });
+          document.body.appendChild(ifr);
+          function bersihkan() { if (ifr.parentNode) ifr.parentNode.removeChild(ifr); }
+          /* paksa tampilan "layar" mengikuti ukuran cetak (bukan versi
+             berbayang-abu untuk pratinjau di layar) TANPA padding bawaan --
+             margin fisik halaman ditambahkan sendiri di bawah (MARGIN_X/Y)
+             supaya berlaku rata di setiap halaman hasil potongan, bukan cuma
+             di ujung atas dokumen pertama / ujung bawah dokumen terakhir. */
+          var override = '<style>@media screen{ body{background:#fff!important} ' +
+            '.lembar{width:17cm!important;max-width:none!important;margin:0!important;' +
+            'padding:0!important;box-shadow:none!important;background:#fff!important} }</style>';
+          ifr.onload = function () {
+            var lembar = ifr.contentDocument.querySelector('.lembar');
+            if (!lembar) { bersihkan(); reject(new Error('Isi dokumen tidak ditemukan.')); return; }
+            w.html2canvas(lembar, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function (kanvas) {
+              try {
+                var HAL_W = 21, HAL_H = 29.7;               // A4, cm
+                var MARGIN_X = 2, MARGIN_Y = 2;              // margin cetak per halaman, cm
+                var LEBAR_CM = HAL_W - MARGIN_X * 2;          // = 17, pas dengan lebar .lembar
+                var TINGGI_CM = HAL_H - MARGIN_Y * 2;
+                var pxPerCm = kanvas.width / LEBAR_CM;
+                var tinggiHalPx = Math.max(40, Math.round(pxPerCm * TINGGI_CM));
+                var ctxSumber = kanvas.getContext('2d');
+
+                /* baris piksel di y dianggap "kosong" (aman dipotong) bila
+                   praktis semua sampelnya nyaris putih -- celah antar baris
+                   teks atau antar sel tabel. */
+                function barisKosong(y) {
+                  if (y <= 0 || y >= kanvas.height) return true;
+                  var data = ctxSumber.getImageData(0, y, kanvas.width, 1).data;
+                  var langkah = Math.max(1, Math.floor(kanvas.width / 300)) * 4;
+                  for (var i = 0; i < data.length; i += langkah) {
+                    if (data[i] < 246 || data[i + 1] < 246 || data[i + 2] < 246) return false;
+                  }
+                  return true;
+                }
+                /* cari baris kosong terdekat dari target (maju/mundur), dalam
+                   jendela pencarian sekitar 1.5cm. tak ketemu -> potong apa adanya. */
+                function titikPotong(target) {
+                  if (target >= kanvas.height) return kanvas.height;
+                  var jendela = Math.round(pxPerCm * 1.5);
+                  for (var jarak = 0; jarak <= jendela; jarak++) {
+                    if (barisKosong(target - jarak)) return target - jarak;
+                    if (barisKosong(target + jarak)) return Math.min(kanvas.height, target + jarak);
+                  }
+                  return target;
+                }
+
+                var potongan = [], cursor = 0;
+                while (cursor < kanvas.height) {
+                  var akhir = titikPotong(cursor + tinggiHalPx);
+                  if (akhir - cursor < tinggiHalPx * 0.25) akhir = Math.min(kanvas.height, cursor + tinggiHalPx);
+                  potongan.push({ mulai: cursor, tinggi: akhir - cursor });
+                  cursor = akhir;
+                }
+
+                var pdf = new jsPDFCtor({ unit: 'cm', format: 'a4', orientation: 'portrait' });
+                potongan.forEach(function (p, i) {
+                  var potong = document.createElement('canvas');
+                  potong.width = kanvas.width; potong.height = tinggiHalPx;
+                  var ctx2d = potong.getContext('2d');
+                  ctx2d.fillStyle = '#fff'; ctx2d.fillRect(0, 0, potong.width, potong.height);
+                  ctx2d.drawImage(kanvas, 0, p.mulai, kanvas.width, p.tinggi, 0, 0, kanvas.width, p.tinggi);
+                  if (i > 0) pdf.addPage();
+                  pdf.addImage(potong.toDataURL('image/jpeg', 0.95), 'JPEG', MARGIN_X, MARGIN_Y, LEBAR_CM, TINGGI_CM);
+                });
+                pdf.save((d.judul || 'dokumen').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 90) + '.pdf');
+                bersihkan();
+                UI.toast('PDF diunduh', 'ok');
+                resolve();
+              } catch (e) { bersihkan(); reject(e); }
+            }).catch(function (e) { bersihkan(); reject(e); });
+          };
+          ifr.srcdoc = bungkus(d).replace('</head>', override + '</head>');
+        });
       });
     }
   };

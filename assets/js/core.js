@@ -281,7 +281,7 @@
       var body = typeof opt.body === 'string' ? el('div', { html: opt.body }) : opt.body;
       var foot = el('footer.modal-foot');
       var wrap = el('div.modal-bg', { onclick: function (e) { if (e.target === wrap && opt.dismiss !== false) close(); } }, [
-        el('div.modal', { role: 'dialog', 'aria-modal': 'true' }, [
+        el('div.modal', { role: 'dialog', 'aria-modal': 'true', class: opt.kelas || null }, [
           el('header.modal-head', null, [
             el('h2', { text: opt.title || '' }),
             el('button.icon', { type: 'button', title: 'Tutup', onclick: close, html: '&times;' })
@@ -293,7 +293,7 @@
       (opt.actions || [{ label: 'Tutup' }]).forEach(function (a) {
         foot.appendChild(el('button', {
           type: 'button', class: 'btn ' + (a.kind || 'ghost'),
-          onclick: function () { if (!a.onclick || a.onclick(close) !== false) if (a.close !== false) close(); }
+          onclick: function (e) { if (!a.onclick || a.onclick(close, e.currentTarget) !== false) if (a.close !== false) close(); }
         }, a.label));
       });
       function close() { wrap.classList.add('out'); setTimeout(function () { wrap.remove(); }, 160); document.removeEventListener('keydown', key); }
@@ -338,29 +338,22 @@
         };
         if (o.attr) for (var a in o.attr) at[a] = o.attr[a];
         input = el('input', at);
-        input.value = o.value == null ? '' : (o.format === 'rp' ? String(Math.round(Number(o.value) || 0)) : o.value); /* diformat ribuan di bawah */
+        input.value = o.value == null ? '' : (o.format === 'rp' ? Fmt.num(Number(o.value) || 0, 0) : o.value);
         if (o.format === 'rp') {
           (function (input) {
             input.style.textAlign = 'right';
-            /* Nominal rupiah = bilangan bulat. Ambil HANYA digit dari isi kolom, jangan lewat
-               Fmt.parseNum: parseNum menebak titik/koma sebagai desimal atau ribuan, dan tebakan itu
-               salah begitu ada digit baru diketik ("12.3456" / "12,3456" dibaca desimal -> 12). */
-            function digit(s) { return String(s == null ? '' : s).replace(/\D/g, '').replace(/^0+(?=\d)/, ''); }
-            function ribuan(d) { return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); } /* selalu titik, tak bergantung locale */
-            function sync() { input.dataset.angka = digit(input.value) || '0'; }
-            input.value = ribuan(digit(input.value));
+            function sync() { input.dataset.angka = String(Fmt.parseNum(input.value)); }
             sync(); /* penting: isi dataset.angka SEKARANG juga (bukan cuma saat difokus/diketik),
                        supaya UI.formData tetap membaca angka mentah yang benar walau field ini
-                       tidak pernah disentuh user sama sekali dalam sesi edit ini. */
+                       tidak pernah disentuh user sama sekali dalam sesi edit ini — sebelum ini,
+                       field 'rp' yang tak tersentuh membuat formData mengirim teks berformat titik
+                       ("50.000.000") alih-alih angka, sehingga nilainya salah/hilang saat disimpan. */
             input.addEventListener('input', function () {
-              var caret = input.selectionStart, raw = input.value;
-              var digitSebelumCaret = digit(raw.slice(0, caret)).length;
-              var baru = ribuan(digit(raw));
+              var awal = input.selectionStart, len = input.value.length;
+              var baru = Fmt.num(Fmt.parseNum(input.value), 0);
               input.value = baru;
               sync();
-              /* kembalikan kursor tepat setelah digit ke-N yang sama */
-              var pos = 0, hitung = 0;
-              while (pos < baru.length && hitung < digitSebelumCaret) { if (/\d/.test(baru[pos])) hitung++; pos++; }
+              var pos = awal + (baru.length - len);
               try { input.setSelectionRange(pos, pos); } catch (e) { }
             });
             input.addEventListener('focus', sync);
@@ -416,14 +409,14 @@
     loading: function (t) { return el('div.loading', { text: t || 'Memuat…' }); },
     badge: function (text, kind) { return el('span.badge' + (kind ? '.' + kind : ''), { text: text }); },
 
-    /* pita kelengkapan dokumen (jumlah segmen mengikuti C.DOKUMEN) */
+    /* pita kelengkapan 13 dokumen */
     pita: function (adaMap, paket) {
-      var wrap = el('div.pita', { title: 'Kelengkapan ' + C.DOKUMEN.length + ' dokumen' });
+      var wrap = el('div.pita', { title: 'Kelengkapan 13 dokumen' });
       C.DOKUMEN.forEach(function (d) {
-        var perlu = w.dokPerlu(d, paket);
+        var perlu = !d.bersyarat || (paket && paket[d.bersyarat]);
         var ada = adaMap[d.kode];
         wrap.appendChild(el('i.seg' + (!perlu ? '.na' : ada ? '.ok' : ''), {
-          title: w.dokNo(d.kode) + '. ' + d.nama + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
+          title: d.kode + '. ' + d.nama + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
         }));
       });
       return wrap;
@@ -450,33 +443,260 @@
       return el('div.tabel-wrap', null, [el('table.tabel', null, [thead, tbody])]);
     },
 
-    /* pratinjau berkas Google Drive dalam modal iframe */
+    /* panggung geser/perbesar/putar generik dipakai untuk gambar & halaman pdf.
+       simpelnya: sebuah node (img/canvas) dibungkus lalu digeser dengan
+       transform CSS -- geser & cubit sentuh, roda mouse/trackpad, dan tombol
+       alat di bagian bawah panggung. mengembalikan {ganti, setLabel} supaya
+       pemanggil (mis. penampil pdf berhalaman banyak) bisa mengganti isi
+       tanpa membangun ulang seluruh kendali. */
+    /* panggung geser/perbesar/putar generik dipakai untuk gambar & halaman pdf.
+       node (img/canvas) dibungkus lalu digeser dengan transform CSS. dibatasi
+       dua arah supaya dokumen TIDAK PERNAH bisa hilang dari layar:
+        - saat dibuka, otomatis diskalakan supaya pas seutuhnya di panggung
+          (seperti "fit to screen"), dan tak bisa diperkecil melebihi itu;
+        - geseran dijepit (jepret()) supaya sebagian dokumen selalu tumpang
+          tindih dengan area panggung, seberapa jauh pun diseret/diputar. */
+    _panggung: function (stage, node, opts) {
+      opts = opts || {};
+      clear(stage);
+      var skala = 1, rotasi = 0, tx = 0, ty = 0, MIN = 1, MAKS = 6;
+      var wrap = el('div.pv-bungkus', null, [node]);
+      stage.appendChild(wrap);
+      var dasarSkala = 1, asli = { w: 0, h: 0 };
+
+      /* jepit tx/ty supaya bounding-box dokumen (memperhitungkan rotasi)
+         selalu bersinggungan dengan panggung, minimal sejumlah "lebih" px */
+      function jepret() {
+        var r = stage.getBoundingClientRect();
+        var w0 = asli.w * dasarSkala * skala, h0 = asli.h * dasarSkala * skala;
+        var rad = rotasi * Math.PI / 180;
+        var bw = Math.abs(w0 * Math.cos(rad)) + Math.abs(h0 * Math.sin(rad));
+        var bh = Math.abs(w0 * Math.sin(rad)) + Math.abs(h0 * Math.cos(rad));
+        var lebih = Math.max(0, Math.min(90, bw / 2, bh / 2, r.width / 2, r.height / 2));
+        var maxTx = bw <= r.width ? 0 : (r.width / 2 - lebih + bw / 2);
+        var maxTy = bh <= r.height ? 0 : (r.height / 2 - lebih + bh / 2);
+        tx = Math.max(-maxTx, Math.min(maxTx, tx));
+        ty = Math.max(-maxTy, Math.min(maxTy, ty));
+      }
+      function terap() { wrap.style.transform = 'translate(' + tx + 'px,' + ty + 'px) rotate(' + rotasi + 'deg) scale(' + skala + ')'; }
+      function pas() { skala = 1; rotasi = 0; tx = 0; ty = 0; terap(); }
+      /* ukur ulang node aktif & hitung dasarSkala supaya pas di panggung */
+      function ukur(w0, h0) {
+        asli = { w: w0 || 1, h: h0 || 1 };
+        var r = stage.getBoundingClientRect();
+        dasarSkala = Math.max(0.02, Math.min((r.width * 0.96) / asli.w, (r.height * 0.96) / asli.h)) || 1;
+        node.style.width = Math.round(asli.w * dasarSkala) + 'px';
+        node.style.height = Math.round(asli.h * dasarSkala) + 'px';
+        node.style.visibility = 'visible';
+        skala = 1; rotasi = 0; tx = 0; ty = 0;
+        terap();
+      }
+      function ukurNode() {
+        node.style.visibility = 'hidden';
+        if (node.tagName === 'CANVAS') { ukur(node.width, node.height); return; }
+        if (node.complete && node.naturalWidth) { ukur(node.naturalWidth, node.naturalHeight); return; }
+        node.addEventListener('load', function () { ukur(node.naturalWidth, node.naturalHeight); });
+        node.addEventListener('error', function () {
+          clear(stage).appendChild(UI.empty('Gagal memuat gambar', 'Berkas tidak dapat ditampilkan di sini.'));
+        });
+      }
+      ukurNode();
+
+      /* roda mouse / trackpad: perbesar mengikuti posisi kursor. tak pernah
+         bisa memperkecil melewati ukuran "pas ke layar" (MIN = 1). */
+      stage.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        var lama = skala;
+        skala = Math.min(MAKS, Math.max(MIN, skala * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+        var r = stage.getBoundingClientRect();
+        var px = e.clientX - r.left - r.width / 2, py = e.clientY - r.top - r.height / 2;
+        tx -= px * (skala / lama - 1); ty -= py * (skala / lama - 1);
+        jepret(); terap();
+      }, { passive: false });
+
+      /* sentuh: satu jari geser, dua jari cubit-perbesar + putar */
+      var awal = null;
+      function daftarTitik(e) {
+        return Array.prototype.map.call(e.touches || [], function (t) { return { x: t.clientX, y: t.clientY }; });
+      }
+      wrap.addEventListener('touchstart', function (e) {
+        var arr = daftarTitik(e);
+        awal = { skala: skala, rotasi: rotasi, tx: tx, ty: ty, titik: arr };
+        if (arr.length === 2) {
+          awal.jarak = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+          awal.sudut = Math.atan2(arr[1].y - arr[0].y, arr[1].x - arr[0].x) * 180 / Math.PI;
+          awal.tengah = { x: (arr[0].x + arr[1].x) / 2, y: (arr[0].y + arr[1].y) / 2 };
+        }
+      }, { passive: true });
+      wrap.addEventListener('touchmove', function (e) {
+        if (!awal) return;
+        e.preventDefault();
+        var arr = daftarTitik(e);
+        if (arr.length === 1 && awal.titik.length === 1) {
+          tx = awal.tx + (arr[0].x - awal.titik[0].x);
+          ty = awal.ty + (arr[0].y - awal.titik[0].y);
+        } else if (arr.length === 2 && awal.titik.length === 2) {
+          var jarak = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+          var sudut = Math.atan2(arr[1].y - arr[0].y, arr[1].x - arr[0].x) * 180 / Math.PI;
+          skala = Math.min(MAKS, Math.max(MIN, awal.skala * (jarak / (awal.jarak || jarak))));
+          rotasi = awal.rotasi + (sudut - awal.sudut);
+          tx = awal.tx + ((arr[0].x + arr[1].x) / 2 - awal.tengah.x);
+          ty = awal.ty + ((arr[0].y + arr[1].y) / 2 - awal.tengah.y);
+        }
+        jepret(); terap();
+      }, { passive: false });
+      function sentuhSelesai(e) {
+        var arr = daftarTitik(e);
+        if (!arr.length) { awal = null; return; }
+        awal = { skala: skala, rotasi: rotasi, tx: tx, ty: ty, titik: arr };
+        if (arr.length === 2) {
+          awal.jarak = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+          awal.sudut = Math.atan2(arr[1].y - arr[0].y, arr[1].x - arr[0].x) * 180 / Math.PI;
+          awal.tengah = { x: (arr[0].x + arr[1].x) / 2, y: (arr[0].y + arr[1].y) / 2 };
+        }
+      }
+      wrap.addEventListener('touchend', sentuhSelesai, { passive: true });
+      wrap.addEventListener('touchcancel', sentuhSelesai, { passive: true });
+
+      /* seret dengan mouse (klik tahan). listener geser/lepas dipasang di
+         document supaya tak putus saat kursor lewat dari area panggung;
+         resize dipasang di window untuk menjaga jepitan saat layar berputar.
+         keduanya membersihkan diri sendiri begitu panggung ini sudah tak ada
+         di halaman (modal ditutup). */
+      var seret = null;
+      function turun(e) {
+        if (e.button !== 0) return;
+        seret = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+        wrap.classList.add('menyeret'); e.preventDefault();
+      }
+      function gerak(e) {
+        if (!document.body.contains(wrap)) return lepasSemua();
+        if (!seret) return;
+        tx = seret.tx + (e.clientX - seret.x); ty = seret.ty + (e.clientY - seret.y);
+        jepret(); terap();
+      }
+      function lepas() { seret = null; wrap.classList.remove('menyeret'); }
+      function saatUbahUkuran() {
+        if (!document.body.contains(wrap)) return lepasSemua();
+        jepret(); terap();
+      }
+      function lepasSemua() {
+        document.removeEventListener('mousemove', gerak);
+        document.removeEventListener('mouseup', lepas);
+        w.removeEventListener('resize', saatUbahUkuran);
+      }
+      wrap.addEventListener('mousedown', turun);
+      document.addEventListener('mousemove', gerak);
+      document.addEventListener('mouseup', lepas);
+      w.addEventListener('resize', saatUbahUkuran);
+
+      /* klik ganda: perbesar ke tengah, atau kembalikan bila sudah diperbesar */
+      wrap.addEventListener('dblclick', function () {
+        if (skala > 1.05) { pas(); } else { skala = Math.min(MAKS, 2.2); jepret(); terap(); }
+      });
+
+      var labelHal = el('span.pv-hal', { text: opts.label || '' });
+      var alat = el('div.pv-alat', null, [
+        el('button', { type: 'button', title: 'Perkecil', onclick: function () { skala = Math.max(MIN, skala / 1.3); jepret(); terap(); }, html: '&minus;' }),
+        el('button', { type: 'button', title: 'Perbesar', onclick: function () { skala = Math.min(MAKS, skala * 1.3); jepret(); terap(); }, html: '&#43;' }),
+        el('button', { type: 'button', title: 'Putar 90°', onclick: function () { rotasi += 90; jepret(); terap(); }, html: '&#8635;' }),
+        el('button', { type: 'button', title: 'Kembalikan tampilan', onclick: pas, html: '&#8962;' }),
+        (opts.sebelum || opts.sesudah) ? el('span.pv-pisah') : null,
+        opts.sebelum ? el('button', { type: 'button', title: 'Halaman sebelumnya', onclick: opts.sebelum, html: '&#8249;' }) : null,
+        (opts.sebelum || opts.sesudah) ? labelHal : null,
+        opts.sesudah ? el('button', { type: 'button', title: 'Halaman berikutnya', onclick: opts.sesudah, html: '&#8250;' }) : null
+      ]);
+      stage.appendChild(alat);
+
+      return {
+        ganti: function (node2, labelBaru) {
+          clear(wrap); wrap.appendChild(node2); node = node2;
+          if (labelBaru != null) labelHal.textContent = labelBaru;
+          ukurNode();
+        },
+        setLabel: function (t) { labelHal.textContent = t; }
+      };
+    },
+
+    /* pratinjau gambar: img langsung dipasang ke panggung geser/perbesar */
+    _penampilGambar: function (stage, dataUrl) {
+      var img = el('img', { src: dataUrl, draggable: 'false', alt: '' });
+      UI._panggung(stage, img);
+    },
+
+    /* pratinjau pdf lewat pdf.js: tiap halaman dirender ke canvas resolusi
+       tinggi, lalu diperbesar/diputar lewat transform CSS di panggung yang sama.
+       "bytes" boleh ArrayBuffer atau Uint8Array hasil dekode base64. */
+    _penampilPdf: function (stage, bytes) {
+      if (!w.pdfjsLib) {
+        clear(stage).appendChild(UI.empty('Pustaka PDF belum termuat', 'Periksa berkas pustaka di assets/js/lib/ lalu muat ulang halaman.'));
+        return;
+      }
+      w.pdfjsLib.getDocument({ data: bytes }).promise.then(function (dokPdf) {
+        var halaman = 1, total = dokPdf.numPages, panggung;
+        function render(n) {
+          return dokPdf.getPage(n).then(function (pg) {
+            var vp = pg.getViewport({ scale: Math.min(3, (w.devicePixelRatio || 1) * 1.8) });
+            var kanvas = el('canvas');
+            kanvas.width = vp.width; kanvas.height = vp.height;
+            return pg.render({ canvasContext: kanvas.getContext('2d'), viewport: vp }).promise.then(function () { return kanvas; });
+          });
+        }
+        render(halaman).then(function (kanvas) {
+          panggung = UI._panggung(stage, kanvas, total > 1 ? {
+            label: halaman + ' / ' + total,
+            sebelum: function () {
+              if (halaman <= 1) return;
+              halaman--;
+              render(halaman).then(function (k) { panggung.ganti(k, halaman + ' / ' + total); });
+            },
+            sesudah: function () {
+              if (halaman >= total) return;
+              halaman++;
+              render(halaman).then(function (k) { panggung.ganti(k, halaman + ' / ' + total); });
+            }
+          } : null);
+        });
+      }).catch(function (e) {
+        clear(stage).appendChild(UI.empty('Gagal membuka PDF', e.message || String(e)));
+      });
+    },
+
+    /* pratinjau berkas Google Drive: isi berkas diambil lewat backend (aksi
+       "fileGet"), yang memakai API key tersimpan di Script Properties Apps
+       Script -- key itu tidak pernah dikirim ke atau tersimpan di peramban.
+       Ditampilkan di panggung geser/perbesar/putar yang sama untuk gambar
+       maupun pdf, mendukung mouse, trackpad, dan sentuh di semua perangkat. */
     drivePreview: function (file) {
       if (!file) return;
       var fid = file.file_id || file.id;
       if (!fid) return UI.toast('Berkas tidak memiliki ID Drive', 'bad');
-      var mime = (file.mime || file.nama_file || '').toLowerCase();
-      var src;
-      /* gambar langsung tampil; pdf & dokumen lain memakai pratinjau Drive */
-      if (/image\/(png|jpe?g|gif|webp)/.test(mime) || /\.(png|jpe?g|gif|webp)$/.test(mime)) {
-        src = 'https://drive.google.com/thumbnail?id=' + fid + '&sz=w1200';
-      } else {
-        src = 'https://drive.google.com/file/d/' + fid + '/preview';
-      }
-      var box = el('div');
-      box.style.cssText = 'position:relative;padding-top:70%;background:#f2f5f0;border-radius:8px;overflow:hidden';
-      var ifr = el('iframe', {
-        src: src, style: 'position:absolute;inset:0;width:100%;height:100%;border:0',
-        allow: 'autoplay', loading: 'lazy'
-      });
-      box.appendChild(ifr);
+      var nama = file.nama_file || file.nama || 'berkas';
+      var stage = el('div.pv-panggung', null, [el('div.pv-muat', { text: 'Memuat pratinjau…' })]);
       var modal = UI.modal({
-        title: 'Pratinjau: ' + (file.nama_file || file.nama || 'berkas'),
-        body: box,
+        title: 'Pratinjau: ' + nama,
+        kelas: 'penuh',
+        body: stage,
         actions: [
           { label: 'Buka di Drive', onclick: function () { window.open('https://drive.google.com/file/d/' + fid + '/view', '_blank'); return false; } },
           { label: 'Tutup', kind: 'primary' }
         ]
+      });
+      API.call('fileGet', { file_id: fid }, { jsonp: false }).then(function (r) {
+        var mime = (r.mime || '').toLowerCase();
+        if (/^image\//.test(mime)) {
+          UI._penampilGambar(stage, 'data:' + mime + ';base64,' + r.data);
+        } else if (mime === 'application/pdf' || /\.pdf$/i.test(r.nama || nama)) {
+          var bytes = Uint8Array.from(atob(r.data), function (c) { return c.charCodeAt(0); });
+          UI._penampilPdf(stage, bytes);
+        } else {
+          clear(stage).appendChild(UI.empty(
+            'Pratinjau tidak didukung', 'Jenis berkas ini (' + (r.mime || 'tidak diketahui') + ') tidak dapat dipratinjau langsung di sini.',
+            el('button.btn.primary', { onclick: function () { window.open('https://drive.google.com/file/d/' + fid + '/view', '_blank'); } }, 'Buka di Drive')
+          ));
+        }
+      }).catch(function (e) {
+        clear(stage).appendChild(UI.empty('Gagal memuat pratinjau', e.message || String(e)));
       });
       return modal;
     }

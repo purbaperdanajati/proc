@@ -86,6 +86,21 @@ function setup() {
   return 'OK';
 }
 
+/* Jalankan SEKALI dari editor Apps Script (pilih fungsi ini di toolbar > Run)
+   untuk menyimpan API key Google Drive di Script Properties -- tidak pernah
+   dikirim ke peramban. Ambil/berlakukan key dari Google Cloud Console: aktifkan
+   "Google Drive API", lalu batasi key itu ke IP Apps Script bila tersedia atau
+   biarkan tanpa batas Application restriction (permintaan datang dari server,
+   bukan dari browser pengguna). Contoh pemakaian di editor:
+     aturDriveApiKey('AIzaSy....');  */
+function aturDriveApiKey(key) {
+  key = String(key || '').trim();
+  if (!key) throw new Error('Key kosong.');
+  PropertiesService.getScriptProperties().setProperty('DRIVE_API_KEY', key);
+  Logger.log('DRIVE_API_KEY tersimpan di Script Properties.');
+  return 'Tersimpan.';
+}
+
 /* ============================ ROUTING ============================ */
 function doGet(e) {
   var p = (e && e.parameter) || {};
@@ -271,6 +286,11 @@ function bolehSatker(u, satkerId, tahun) {
   });
   if (!ada.length) throw new Error('Anda tidak ditugaskan pada satker ini.');
   return true;
+}
+function driveApiKey() {
+  var k = PropertiesService.getScriptProperties().getProperty('DRIVE_API_KEY');
+  if (!k) throw new Error('DRIVE_API_KEY belum diatur. Jalankan aturDriveApiKey("KEY_ANDA") sekali dari editor Apps Script.');
+  return k;
 }
 
 /* ============================ FOLDER DRIVE ============================ */
@@ -520,6 +540,49 @@ var AKSI = {
     tmp.setTrashed(true);
     CacheService.getScriptCache().remove('up_' + d.uid);
     return hasil;
+  },
+
+  /* pratinjau berkas: proxy ke Google Drive API v3 memakai key dari Script
+     Properties (aturDriveApiKey) -- key tidak pernah dikirim ke peramban,
+     hanya isi berkas (base64) yang dikembalikan ke klien. */
+  fileGet: function (d, u) {
+    var fid = String(d.file_id || '').trim();
+    if (!fid) throw new Error('ID berkas tidak diberikan.');
+
+    var dok = bacaTabel('Dokumen').filter(function (x) { return String(x.file_id) === fid; })[0];
+    if (dok) {
+      var p = cariBaris('Paket', dok.paket_id);
+      if (p) bolehSatker(u, p.satker_id, p.tahun);
+    } else if (u.role !== 'admin') {
+      var milikPenyedia = bacaTabel('Penyedia').some(function (x) { return String(x.cp_file_id) === fid; });
+      if (!milikPenyedia) throw new Error('Berkas tidak ditemukan atau Anda tidak berwenang melihatnya.');
+    }
+
+    var kunci = driveApiKey();
+    var meta = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fid) + '?fields=name,mimeType,size&key=' + encodeURIComponent(kunci),
+      { muteHttpExceptions: true });
+    if (meta.getResponseCode() !== 200) {
+      throw new Error(meta.getResponseCode() === 403
+        ? 'Google Drive API menolak permintaan (periksa DRIVE_API_KEY, dan pastikan berkas berstatus "Anyone with link").'
+        : 'Google menjawab ' + meta.getResponseCode() + ' saat mengambil info berkas.');
+    }
+    var info = JSON.parse(meta.getContentText());
+
+    var MAKS = 20 * 1024 * 1024;
+    if (Number(info.size || 0) > MAKS) throw new Error('Berkas terlalu besar untuk dipratinjau (maks 20 MB). Buka langsung di Drive.');
+
+    var media = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fid) + '?alt=media&key=' + encodeURIComponent(kunci),
+      { muteHttpExceptions: true });
+    if (media.getResponseCode() !== 200) throw new Error('Google menjawab ' + media.getResponseCode() + ' saat mengambil isi berkas.');
+
+    return {
+      nama: info.name || 'berkas',
+      mime: info.mimeType || 'application/octet-stream',
+      size: Number(info.size || 0),
+      data: Utilities.base64Encode(media.getContent())
+    };
   },
 
   removeDok: function (d, u) {

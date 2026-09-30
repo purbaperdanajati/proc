@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>SIPADU — Pengadaan Kankemenag Indramayu</title>
 <link rel="icon" href="assets/img/logo-kemenag.png">
-<link rel="stylesheet" href="assets/css/app.css?v=1.1.1">
+<link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
 <div id="bar"></div>
@@ -38,12 +38,20 @@
 
 <div id="toast"></div>
 
-<script src="assets/js/config.js?v=1.1.1"></script>
-<script src="assets/js/core.js?v=1.1.1"></script>
-<script src="assets/js/hps.js?v=1.1.1"></script>
-<script src="assets/js/docgen.js?v=1.1.1"></script>
-<script src="assets/js/pages.js?v=1.1.1"></script>
-<script src="assets/js/paket.js?v=1.1.1"></script>
-<script src="assets/js/app.js?v=1.1.1"></script>
+<script src="assets/js/lib/jspdf.umd.min.js"></script>
+<script src="assets/js/lib/html2canvas.min.js"></script>
+<script src="assets/js/lib/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'assets/js/lib/pdf.worker.min.js';
+  }
+</script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/hps.js"></script>
+<script src="assets/js/docgen.js"></script>
+<script src="assets/js/pages.js"></script>
+<script src="assets/js/paket.js"></script>
+<script src="assets/js/app.js"></script>
 </body>
 </html>
