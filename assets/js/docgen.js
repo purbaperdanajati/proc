@@ -1,6 +1,13 @@
 /* SIPADU - pembuat dokumen.
    Seluruh proses berjalan di peramban: server hanya menyimpan data,
-   tidak pernah merakit dokumen. */
+   tidak pernah merakit dokumen.
+
+   Tata letak yang dijaga di pratinjau, cetak, .doc, dan .pdf:
+   - logo kop diperkecil dan diberi ukuran eksplisit (lihat logo()/kop());
+   - baris tabel, paragraf, butir daftar, dan tanda tangan tidak terpotong di batas halaman
+     (.pdf: lihat paginasi(); .doc/cetak: lihat rapikan() dan aturan CSS "pemenggalan halaman");
+   - bagian bertanda <div class="hal-baru"></div> (mis. HPS pada berkas gabungan KAK+HPS)
+     selalu dimulai di halaman baru. */
 (function (w) {
   'use strict';
 
@@ -36,17 +43,15 @@
   @page { size: A4; margin: 2cm 2cm 2cm 2.5cm; }
   body { font: 11pt/1.45 Arial, Helvetica, sans-serif; color: #000; margin: 0; }
   .lembar { width: 17cm; margin: 0 auto; padding: 10px 0 40px; }
-  @media screen { body { background:#e8ebe7; } .lembar { background:#fff; width:21cm; padding:2cm 2cm 2cm 2.5cm; margin:16px auto; box-shadow:0 2px 14px rgba(0,0,0,.18);} }
   .kop { width:100%; border-collapse:collapse; }
   .kop td { vertical-align: middle; padding:0; }
-  .kop .logo { width:2.4cm; text-align:center; }
-  .kop .logo img { width:2.1cm; }
+  .kop .logo { text-align:center; }
   .kop .t1 { font-size:13pt; letter-spacing:.3px; }
   .kop .t2 { font-size:12pt; }
   .kop .t3 { font-size:17pt; font-weight:bold; letter-spacing:.4px; }
   .kop .t4 { font-size:8.5pt; line-height:1.25; }
   .kop-tengah { text-align:center; }
-  .garis-kop { border-bottom:3px solid #000; margin-top:3px; }
+  .garis-kop { border-bottom:3px solid #000; margin-top:3px; font-size:1pt; line-height:1pt; mso-line-height-rule:exactly; }
   .garis-kop.tipis { border-bottom:1px solid #000; margin-top:1px; }
   h1.judul { text-align:center; font-size:12pt; margin:18px 0 2px; text-transform:uppercase; }
   h1.judul.garis { text-decoration:underline; }
@@ -66,7 +71,11 @@
   ol.dasar { margin:0; padding-left:20px; text-align:justify; }
   ol.dasar li { margin-bottom:5px; }
   ol.huruf { list-style:lower-alpha; margin:0; padding-left:20px; }
-  .lampiran { page-break-before:always; }
+  /* ---------- pemenggalan halaman (cetak, .doc, dan PDF) ---------- */
+  .hal-baru { page-break-before:always; break-before:page; height:0; margin:0; padding:0; border:0; font-size:1pt; line-height:1pt; }
+  table.doc-tabel thead { display:table-header-group; }
+  table.doc-tabel tr, table.foto tr, table.ttd tr { page-break-inside:avoid; break-inside:avoid; }
+  h1.judul, .nomor { page-break-after:avoid; break-after:avoid; }
   .foto { width:100%; border-collapse:collapse; margin-top:10px; }
   .foto td { border:1px solid #000; height:5.2cm; width:50%; text-align:center; color:#888; font-size:9pt; padding:4px; }
   .foto td img { max-width:100%; max-height:5cm; object-fit:cover; }
@@ -74,19 +83,77 @@
   .spasi { height:10px; }
   `;
 
-  /* ---------- logo sebagai data URI supaya ikut terbawa saat diunduh ---------- */
-  var logoCache = null;
+  /* hanya untuk tampilan layar (pratinjau & iframe PDF); TIDAK ikut ke berkas .doc */
+  var GAYA_LAYAR = `
+  @media screen {
+    body { background:#e8ebe7; }
+    .lembar { background:#fff; width:21cm; padding:2cm 2cm 2cm 2.5cm; margin:16px auto; box-shadow:0 2px 14px rgba(0,0,0,.18); }
+    .hal-baru { height:20px; margin:28px -2cm 28px -2.5cm; background:#e8ebe7; border-top:1px solid #d0d6d0; border-bottom:1px solid #d0d6d0; position:relative; }
+    .hal-baru::after { content:'HALAMAN BARU'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font:9px/1 Arial,Helvetica,sans-serif; letter-spacing:1px; color:#8b958d; }
+  }
+  `;
+
+  /* ---------- logo kop ----------
+     Berkas logo resmi beresolusi besar (mis. 3694x3513 px). Dipakai apa adanya ia
+     (1) membuat data URI puluhan-ratusan KB per dokumen dan memperlambat PDF, serta
+     (2) tampil sebesar aslinya di Word, karena Word tidak mematuhi CSS width pada <img>.
+     Karena itu logo diperkecil sekali lewat canvas (sisi terpanjang LOGO_PX piksel — masih
+     sangat tajam pada 2-3 cm di kertas) dan ukuran tampilnya ditulis eksplisit: atribut
+     width/height (untuk Word) sekaligus CSS (untuk peramban/html2canvas), dengan proporsi asli.
+     Ukuran sisi terpanjang di kertas = CONFIG.LOGO_CM (baku 2,3 cm). */
+  var LOGO_PX = 360;                 // resolusi berkas logo yang disematkan
+  var PX_CM = 96 / 2.54;             // piksel CSS per cm
+  var logoCache = null;              // null = belum dimuat; {src:''} = tidak ada logo
+  function logoCm() {
+    var v = Number(w.CONFIG && w.CONFIG.LOGO_CM);
+    return v >= 1 && v <= 5 ? v : 2.3;
+  }
+  function bacaDataURI(b) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.onerror = rej; fr.readAsDataURL(b);
+    });
+  }
+  function muatGambar(src) {
+    return new Promise(function (res, rej) {
+      var im = new Image(); im.onload = function () { res(im); }; im.onerror = rej; im.src = src;
+    });
+  }
+  function perkecil(im, W, H) {
+    var f = Math.min(1, LOGO_PX / Math.max(W, H));
+    if (f >= 1) return im.src;                       // sudah kecil
+    var tw = Math.max(1, Math.round(W * f)), th = Math.max(1, Math.round(H * f));
+    var sumber = im, cw = W, ch = H;
+    while (cw / 2 >= tw && ch / 2 >= th) {           // dibagi dua bertahap supaya hasilnya tetap tajam
+      var c = document.createElement('canvas');
+      cw = Math.floor(cw / 2); ch = Math.floor(ch / 2);
+      c.width = cw; c.height = ch;
+      var g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(sumber, 0, 0, cw, ch);
+      sumber = c;
+    }
+    var out = document.createElement('canvas'); out.width = tw; out.height = th;
+    var go = out.getContext('2d'); go.imageSmoothingEnabled = true; go.imageSmoothingQuality = 'high';
+    go.drawImage(sumber, 0, 0, tw, th);
+    return out.toDataURL('image/png');               // PNG: latar transparan tetap terjaga
+  }
   function logo() {
     if (logoCache !== null) return Promise.resolve(logoCache);
     return fetch(w.CONFIG.LOGO)
       .then(function (r) { if (!r.ok) throw 0; return r.blob(); })
-      .then(function (b) {
-        return new Promise(function (res) {
-          var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.readAsDataURL(b);
+      .then(bacaDataURI)
+      .then(function (uri) {
+        return muatGambar(uri).then(function (im) {
+          var W = im.naturalWidth || im.width, H = im.naturalHeight || im.height;
+          if (!W || !H) throw 0;
+          var src;
+          try { src = perkecil(im, W, H); } catch (e) { src = uri; }   // gagal diperkecil -> pakai apa adanya (ukuran tampil tetap dikunci)
+          var cm = logoCm(), rasio = W / H;
+          var cmW = rasio >= 1 ? cm : cm * rasio, cmH = rasio >= 1 ? cm / rasio : cm;
+          return { src: src, cmW: cmW, cmH: cmH, pxW: Math.round(cmW * PX_CM), pxH: Math.round(cmH * PX_CM) };
         });
       })
       .then(function (d) { logoCache = d; return d; })
-      .catch(function () { logoCache = ''; return ''; });
+      .catch(function () { logoCache = { src: '' }; return logoCache; });
   }
 
   function E(s) { return esc(s == null ? '' : s); }
@@ -97,8 +164,15 @@
     var alamat = [s.alamat, s.desa, s.kecamatan].filter(Boolean).join(', ');
     var baris2 = [alamat, s.kode_pos ? 'Kode Pos ' + s.kode_pos : ''].filter(Boolean).join(' ');
     var baris3 = [s.telp ? 'Telp/Fax. ' + s.telp : '', s.email ? 'e-mail : ' + s.email : '', s.website || ''].filter(Boolean).join('  ');
-    return `<table class="kop"><tr>
-      <td class="logo">${logoCache ? '<img src="' + logoCache + '" alt="">' : ''}</td>
+    var L = logoCache && logoCache.src ? logoCache : null;
+    var sel = Math.max(2.4, logoCm() + 0.1);          // lebar sel logo (kiri = kanan supaya teks tetap di tengah)
+    var selAttr = ' width="' + Math.round(sel * PX_CM) + '" style="width:' + sel.toFixed(2) + 'cm"';
+    var gambar = L
+      ? '<img src="' + L.src + '" width="' + L.pxW + '" height="' + L.pxH + '" alt="" ' +
+        'style="width:' + L.cmW.toFixed(2) + 'cm;height:' + L.cmH.toFixed(2) + 'cm">'
+      : '';
+    return `<table class="kop" width="100%" border="0" cellpadding="0" cellspacing="0"><tr>
+      <td class="logo"${selAttr}>${gambar}</td>
       <td class="kop-tengah">
         <div class="t1">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
         <div class="t2">${E(w.CONFIG.INSTANSI).toUpperCase()}</div>
@@ -106,7 +180,7 @@
         <div class="t4">${E(baris2)}</div>
         <div class="t4">${E(baris3)}</div>
       </td>
-      <td class="logo"></td></tr></table>
+      <td class="logo"${selAttr}></td></tr></table>
       <div class="garis-kop"></div><div class="garis-kop tipis"></div>`;
   }
 
@@ -272,7 +346,8 @@
   };
 
   /* dokumen gabungan untuk syarat #4 "KAK, HPS + RAB": KAK/Spesifikasi Teknis
-     (tanpa harga) diikuti HPS (dengan harga, PPN, total) di halaman baru --
+     (tanpa harga) diikuti HPS (dengan harga, PPN, total) yang SELALU mulai di
+     halaman baru (.hal-baru; dipatuhi cetak, .doc, dan .pdf) dengan kop sendiri --
      satu berkas, tapi masing-masing tetap memakai nomor & tanggal suratnya
      sendiri (no_kak/tgl_kak, no_hps/tgl_hps) dari data paket. */
   T.kak_hps = function (c) {
@@ -286,7 +361,7 @@
     var hps = T.hps(salin({ nomor: m.no_hps || '', tanggal: m.tgl_hps || new Date() }));
     return {
       judul: 'KAK, HPS & RAB - ' + (pk.nama || ''),
-      html: kak.html + '<div class="lampiran">' + hps.html + '</div>'
+      html: kak.html + '<div class="hal-baru"></div>' + hps.html
     };
   };
 
@@ -295,8 +370,8 @@
     var jabatanKpa = c.jabatan_kpa || 'Kepala Satuan Kerja';
     var items = itemHPS(c.hps);
     var tabelBarang = items.length
-      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb">Uraian Barang</td>' +
-        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
+      ? '<table class="doc-tabel"><thead><tr data-kepala="1"><td class="tb tengah" style="width:1.2cm">No</td><td class="tb">Uraian Barang</td>' +
+        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr></thead><tbody>' +
         items.map(function (it, i) {
           return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
             '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
@@ -341,8 +416,8 @@
   function tabelBarangHTML(c) {
     var items = itemHPS(c.hps);
     return items.length
-      ? '<table class="doc-tabel"><tbody><tr><td class="tb tengah" style="width:1.2cm">No</td><td class="tb tengah">Uraian Barang</td>' +
-        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr>' +
+      ? '<table class="doc-tabel"><thead><tr data-kepala="1"><td class="tb tengah" style="width:1.2cm">No</td><td class="tb tengah">Uraian Barang</td>' +
+        '<td class="tb tengah" style="width:3cm">Satuan Ukuran</td><td class="tb tengah" style="width:3cm">Volume Barang</td></tr></thead><tbody>' +
         items.map(function (it, i) {
           return '<tr><td class="tengah">' + (i + 1) + '.</td><td>' + E(String(it.uraian)).replace(/\n/g, '<br>') +
             '</td><td class="tengah">' + E(it.satuan || '-') + '</td><td class="tengah">' + E(it.volume || '-') + '</td></tr>';
@@ -469,9 +544,9 @@
 
       /* tabel rencana vs realisasi per item, sesuai hasil penilaian di tab Monev */
       var tBody = items.length
-        ? '<table class="doc-tabel"><tbody><tr><td class="tb">No</td><td class="tb">Uraian Pekerjaan</td>' +
+        ? '<table class="doc-tabel"><thead><tr data-kepala="1"><td class="tb">No</td><td class="tb">Uraian Pekerjaan</td>' +
           '<td class="tb" style="width:2.6cm">Rencana</td><td class="tb" style="width:2.6cm">Realisasi</td>' +
-          '<td class="tb" style="width:3.6cm">Keterangan</td></tr>' +
+          '<td class="tb" style="width:3.6cm">Keterangan</td></tr></thead><tbody>' +
           items.map(function (it, i) {
             var d = mvItems[i] || {};
             var rencana = (it.volume || '-') + (it.satuan ? ' ' + it.satuan : '');
@@ -503,7 +578,7 @@
         fotoHtml = '<table class="foto"><tr><td colspan="2">Belum ada dokumentasi foto diunggah</td></tr></table>';
       }
 
-      lamp = `<div class="lampiran"><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
+      lamp = `<div class="hal-baru"></div><div><p><b>Lampiran Hasil Monitoring dan Evaluasi ${E(pk.nama || '')} pada ${E(s.nama || '')}</b></p>
         ${tBody}
         <p style="margin-top:14px"><b>Dokumentasi Monitoring dan Evaluasi</b></p>
         ${fotoHtml}</div>`;
@@ -523,10 +598,315 @@
     return { judul: 'Monev - ' + (pk.nama || ''), html: kop(s) + body };
   };
 
+  /* ---------- penyempurnaan HTML sebelum dipakai ----------
+     Dipakai oleh pratinjau, cetak, PDF, dan .doc:
+     - judul, nomor, kalimat pengantar berakhiran ":" dan kalimat penutup sebelum tanda tangan
+       diberi penanda "lekat" (data-lekat + page-break-after:avoid) supaya tidak terpisah
+       halaman dari blok sesudahnya;
+     - khusus .doc (untukWord): baris tabel dilarang terbelah, dan pemisah halaman ditulis
+       sebagai paragraf ber-page-break-before — bentuk yang dipatuhi Word (kelas CSS pada
+       <div> berisi tabel diabaikan Word). */
+  function rapikan(html, untukWord) {
+    var dok = new DOMParser().parseFromString('<!DOCTYPE html><html><body>' + html + '</body></html>', 'text/html');
+    var body = dok.body;
+    function tiap(sel, fn) { Array.prototype.forEach.call(body.querySelectorAll(sel), fn); }
+    /* gaya ditulis langsung ke atribut style (BUKAN lewat n.style.*): Chrome menyimpan
+       page-break-* sebagai break-* saat diserialisasi, nama yang tidak dikenali Word */
+    function gaya(n, css) {
+      var s = n.getAttribute('style') || '';
+      n.setAttribute('style', s + (s && !/;\s*$/.test(s) ? ';' : '') + css);
+    }
+    function lekat(n) { n.setAttribute('data-lekat', '1'); gaya(n, 'page-break-after:avoid'); }
+    tiap('h1.judul, p.nomor', lekat);
+    tiap('h1.judul', function (h) {
+      var nx = h.nextElementSibling;
+      if (nx && nx.tagName === 'P' && nx.classList.contains('tengah')) lekat(nx);
+    });
+    tiap('p', function (p) {
+      var nx = p.nextElementSibling;
+      if (!nx) return;
+      var teks = (p.textContent || '').replace(/\s+$/, '');
+      var subjudul = p.children.length === 1 && /^(B|STRONG)$/.test(p.children[0].tagName) &&
+        (p.children[0].textContent || '').trim() === teks.trim();
+      if (/:$/.test(teks) || subjudul || nx.classList.contains('ttd')) lekat(p);
+    });
+    if (untukWord) {
+      tiap('table.doc-tabel tr, table.foto tr, table.ttd tr', function (tr) { gaya(tr, 'page-break-inside:avoid'); });
+      tiap('.hal-baru', function (n) {
+        var p = dok.createElement('p');
+        p.setAttribute('style', 'margin:0;padding:0;font-size:1pt;line-height:1pt;mso-line-height-rule:exactly;page-break-before:always');
+        p.innerHTML = '&nbsp;';
+        n.parentNode.replaceChild(p, n);
+      });
+    }
+    return body.innerHTML;
+  }
+
+  /* ---------- paginasi untuk PDF ----------
+     PDF dibuat dari SATU kolom panjang hasil html2canvas yang lalu dipotong per halaman.
+     Kalau kolom itu dipotong buta di tinggi kertas, baris tabel dan teks terbelah di tengah.
+     Karena itu, sebelum dirasterisasi, kolom "dipaginasi" dulu:
+       1. isi dipecah menjadi UNIT yang tak boleh terbelah — baris tabel bergaris (baris yang
+          disatukan rowspan dihitung satu), baris tabel tata letak, paragraf, butir daftar,
+          blok tanda tangan, kop;
+       2. unit yang melewati batas halaman didorong ke awal halaman berikut dengan menyisipkan
+          spasi kosong di depannya (baris spasi di dalam tabel, <div> di luar tabel);
+       3. unit berpenanda lekat (judul, kalimat pengantar ":", 3 baris terakhir tabel + tanda
+          tangan) ikut pindah bersama unit sesudahnya;
+       4. .hal-baru memaksa unit berikutnya mulai di halaman baru;
+       5. tabel bergaris yang bersambung ke halaman berikut mengulang baris kepalanya.
+     Setelah itu tiap halaman persis setinggi `tinggi` px, sehingga kanvas tinggal dipotong
+     kelipatannya. Mengembalikan { tinggi, halaman, pxCm }. */
+  var ISI_W_CM = 17, ISI_H_CM = 25.7;      // area isi per halaman PDF (A4 dikurangi margin 2 cm)
+
+  function paginasi(lembar) {
+    var doc = lembar.ownerDocument, win = doc.defaultView;
+    var pxCm = lembar.getBoundingClientRect().width / ISI_W_CM;
+    var H = Math.floor(ISI_H_CM * pxCm);   // tinggi isi satu halaman, px CSS (bilangan bulat)
+    if (!(pxCm > 5 && H > 200)) throw new Error('Lebar lembar tidak valid (iframe belum tertata)');
+    var TOL = 0.75;                        // toleransi pengukuran
+    var LONGGAR = 1;                       // sisa 1px di tepi halaman agar garis tabel tak terpotong
+    var ATOM = H * 0.14;                   // blok/baris sependek ini (~3,6 cm) tidak dipecah
+    var unit = [], dorongan = 0;
+
+    /* ----- ukur ----- */
+    function y0() { return lembar.getBoundingClientRect().top; }
+    function atas(e) { return e.getBoundingClientRect().top - y0(); }
+    function bawah(e) { return e.getBoundingClientRect().bottom - y0(); }
+    function tinggi(e) { return e.getBoundingClientRect().height; }
+    function gaya(e) { return win.getComputedStyle(e); }
+    function angka(v) { return parseFloat(v) || 0; }
+    function blokKah(n) {
+      if (n.nodeType !== 1) return false;
+      var d = gaya(n).display;
+      return d !== 'none' && d !== 'contents' && d.indexOf('inline') !== 0;
+    }
+    function punyaBlok(e) {
+      for (var c = e.firstElementChild; c; c = c.nextElementSibling) if (blokKah(c)) return true;
+      return false;
+    }
+    function kosongKecil(e) {
+      return tinggi(e) < 14 && !/\S/.test(e.textContent || '') && !e.querySelector('img');
+    }
+
+    /* teks/inline yang berdampingan dengan blok dibungkus <div data-anon> supaya bisa jadi unit */
+    function bungkusInline(wadah) {
+      var anak = Array.prototype.slice.call(wadah.childNodes);
+      if (!anak.some(blokKah)) return;
+      var lari = [];
+      function tutup() {
+        if (lari.length && lari.some(function (n) { return n.nodeType === 1 || /\S/.test(n.nodeValue); })) {
+          var b = doc.createElement('div');
+          b.setAttribute('data-anon', '1');
+          wadah.insertBefore(b, lari[0]);
+          lari.forEach(function (n) { b.appendChild(n); });
+        }
+        lari = [];
+      }
+      anak.forEach(function (n) {
+        if (n.nodeType === 1 && blokKah(n)) tutup();
+        else if (n.nodeType === 1 || n.nodeType === 3) lari.push(n);
+      });
+      tutup();
+    }
+
+    /* ----- kumpulkan unit (urutan dokumen) ----- */
+    function lekatBawaan(e) {
+      if (e.hasAttribute('data-lekat') || e.classList.contains('kop')) return true;
+      return e.hasAttribute('data-anon') && /:\s*$/.test(e.textContent || '');
+    }
+    function tambah(u) {
+      if (!u.paksa) { u.lekat = !!u.lekat || lekatBawaan(u.akhir || u.el); }
+      unit.push(u);
+    }
+    function jumlahKolom(t) {
+      var m = 0;
+      Array.prototype.forEach.call(t.rows, function (r) {
+        var s = 0; Array.prototype.forEach.call(r.cells, function (c) { s += c.colSpan || 1; });
+        if (s > m) m = s;
+      });
+      return m || 1;
+    }
+    function bergaris(t) { return t.classList.contains('doc-tabel') || t.classList.contains('foto'); }
+
+    function kumpulTabelBergaris(t) {
+      var rows = Array.prototype.slice.call(t.rows), n = rows.length;
+      if (!n) return;
+      var ujung = rows.map(function (r, i) {
+        var e = i;
+        Array.prototype.forEach.call(r.cells, function (c) { e = Math.max(e, i + (c.rowSpan || 1) - 1); });
+        return e;
+      });
+      var kepalaAkhir = -1;
+      rows.forEach(function (r, i) {
+        if (r.parentNode.tagName === 'THEAD' || r.hasAttribute('data-kepala')) kepalaAkhir = Math.max(kepalaAkhir, i, ujung[i]);
+      });
+      t.__kepala = rows.filter(function (r) { return r.parentNode.tagName === 'THEAD' || r.hasAttribute('data-kepala'); });
+      /* kelompok baris: baris yang disatukan rowspan tidak boleh dipisah */
+      var grup = [], i = 0;
+      while (i < n) {
+        var b = ujung[i], j = i + 1;
+        while (j <= b && j < n) { if (ujung[j] > b) b = ujung[j]; j++; }
+        if (b >= n) b = n - 1;
+        grup.push({ a: i, b: b });
+        i = b + 1;
+      }
+      var k0 = 0;
+      while (k0 < grup.length - 1 && grup[k0].b <= kepalaAkhir) k0++;
+      var us = [{ el: rows[0], akhir: rows[grup[k0].b], baris: true, tabel: t, pertama: true }];
+      for (var k = k0 + 1; k < grup.length; k++) us.push({ el: rows[grup[k].a], akhir: rows[grup[k].b], baris: true, tabel: t });
+      /* tiga kelompok terakhir ikut pindah bersama blok sesudah tabel (total, terbilang, tanda tangan) */
+      for (var q = Math.max(1, us.length - 3); q < us.length; q++) us[q].lekat = true;
+      us.forEach(tambah);
+    }
+
+    function kumpulBarisTata(tr) {
+      var h = tinggi(tr);
+      if (h < 14) return;                                  // baris pemisah tipis
+      var t = tr.closest('table');
+      if (h <= ATOM) { tambah({ el: tr, akhir: tr, baris: true, tabel: t }); return; }
+      /* sel utama = sel dengan ISI tertinggi (tinggi kotak semua sel dalam satu baris sama,
+         jadi sel label pendek tidak boleh terpilih hanya karena kotaknya setinggi baris) */
+      var utama = null, tmax = 0;
+      Array.prototype.forEach.call(tr.cells, function (c) {
+        var rg = doc.createRange(); rg.selectNodeContents(c);
+        var th = rg.getBoundingClientRect().height;
+        if (th > tmax) { tmax = th; utama = c; }
+      });
+      if (utama && punyaBlok(utama)) kumpul(utama);
+      else tambah({ el: tr, akhir: tr, baris: true, tabel: t });
+    }
+
+    function kumpulTabel(t, adaPaksa) {
+      var h = tinggi(t);
+      if (bergaris(t)) {
+        if (!adaPaksa && h <= ATOM) tambah({ el: t, akhir: t });
+        else kumpulTabelBergaris(t);
+        return;
+      }
+      if (t.classList.contains('ttd') || t.classList.contains('kop') || (!adaPaksa && h <= ATOM)) { tambah({ el: t, akhir: t }); return; }
+      Array.prototype.forEach.call(t.rows, kumpulBarisTata);
+    }
+
+    function kumpul(wadah) {
+      bungkusInline(wadah);
+      Array.prototype.slice.call(wadah.children).forEach(function (c) {
+        if (c.classList.contains('spasi-hal')) return;
+        if (c.classList.contains('hal-baru')) { tambah({ paksa: true }); return; }
+        var h = tinggi(c);
+        if (h < 0.5 || kosongKecil(c)) return;
+        if (c.tagName === 'TABLE') { kumpulTabel(c, !!c.querySelector('.hal-baru')); return; }
+        if (!c.querySelector('.hal-baru') && (h <= ATOM || !punyaBlok(c))) { tambah({ el: c, akhir: c }); return; }
+        kumpul(c);
+      });
+    }
+
+    /* ----- menyisipkan spasi ----- */
+    function adaSebelum(x) {
+      for (var s = x.previousSibling; s; s = s.previousSibling) {
+        if (s.nodeType === 3) { if (/\S/.test(s.nodeValue)) return true; }
+        else if (s.nodeType === 1 && !s.classList.contains('spasi-hal') && s.getBoundingClientRect().height > 1) return true;
+      }
+      return false;
+    }
+    function atasMargin(x) { return atas(x) - angka(gaya(x).marginTop); }
+    function isiAtas(p) { var g = gaya(p); return atas(p) + angka(g.paddingTop) + angka(g.borderTopWidth); }
+    /* naik ke pembungkus terluar yang awalnya menempel di ujung atas unit (mis. seluruh baris
+       "13. SPESIFIKASI TEKNIS" bersama labelnya), supaya label tidak tertinggal sendirian */
+    function jangkar(el) {
+      var x = el, terbaik = el;
+      for (;;) {
+        var p = x.parentElement;
+        if (!p || p === lembar) break;
+        var tag = p.tagName;
+        if (x.tagName === 'TD' || x.tagName === 'TH') { x = p; terbaik = p; continue; }
+        if (adaSebelum(x)) break;
+        var bagianTabel = tag === 'TBODY' || tag === 'THEAD' || tag === 'TFOOT' || tag === 'TABLE' || tag === 'TR';
+        if (!bagianTabel && atasMargin(x) - isiAtas(p) > 1.5) break;
+        x = p;
+        if (tag !== 'TBODY' && tag !== 'THEAD' && tag !== 'TFOOT' && tag !== 'TD' && tag !== 'TH') terbaik = p;
+      }
+      return terbaik;
+    }
+    function buatSpasi(jang) {
+      var sp;
+      if (jang.tagName === 'TR') {
+        var tr = doc.createElement('tr'); tr.className = 'spasi-hal';
+        sp = doc.createElement('td');
+        sp.colSpan = jumlahKolom(jang.closest('table'));
+        sp.setAttribute('style', 'height:0;padding:0;border:0;font-size:0;line-height:0');
+        tr.appendChild(sp);
+        jang.parentNode.insertBefore(tr, jang);
+      } else {
+        sp = doc.createElement('div'); sp.className = 'spasi-hal';
+        sp.setAttribute('style', 'height:0;margin:0;padding:0;border:0;font-size:0;line-height:0;overflow:hidden');
+        jang.parentNode.insertBefore(sp, jang);
+      }
+      return sp;
+    }
+    /* geser unit u supaya berawal di y = alvo */
+    function dorong(u, alvo) {
+      var a = atas(u.el);
+      var sp = buatSpasi(jangkar(u.el));
+      var t = Math.max(0, alvo - a);
+      for (var k = 0; k < 4; k++) {
+        sp.style.height = t + 'px';
+        var selisih = alvo - atas(u.el);
+        if (Math.abs(selisih) <= 0.4) break;
+        t = Math.max(0, t + selisih);
+      }
+      dorongan++;
+    }
+    function sisipKepala(u) {
+      (u.tabel.__kepala || []).forEach(function (r) {
+        var k = r.cloneNode(true);
+        k.removeAttribute('data-kepala');
+        k.setAttribute('data-salinan', '1');
+        u.el.parentNode.insertBefore(k, u.el);
+      });
+    }
+
+    /* ----- jalankan ----- */
+    kumpul(lembar);
+    for (var s = 0; s < unit.length - 1; s++) {          // blok tepat sebelum tanda tangan ikut pindah
+      var nx = unit[s + 1];
+      if (!unit[s].paksa && nx.el && nx.el.classList && nx.el.classList.contains('ttd')) unit[s].lekat = true;
+    }
+
+    var n = unit.length, i = 0, paksaBerikut = false;
+    while (i < n) {
+      var u = unit[i];
+      if (u.paksa) { paksaBerikut = true; i++; continue; }
+      var j = i;
+      while (j + 1 < n && unit[j].lekat && !unit[j + 1].paksa) j++;
+      var a = atas(u.el), b = bawah(unit[j].akhir || unit[j].el);
+      var hal = Math.floor((a + TOL) / H);
+      var muat = (b - a) <= H - 2 * LONGGAR;
+      if (!muat && j > i) { j = i; b = bawah(u.akhir || u.el); muat = (b - a) <= H - 2 * LONGGAR; }
+      var lewat = b > (hal + 1) * H - LONGGAR + TOL;
+      var mulaiBaru = paksaBerikut && (a - hal * H) > 2;
+      if ((lewat && muat) || mulaiBaru) { dorong(u, (hal + 1) * H + LONGGAR); }
+      paksaBerikut = false;
+
+      if (u.baris && u.tabel && !u.pertama && u.tabel.__kepala && u.tabel.__kepala.length) {
+        var a2 = atas(u.el);
+        if (a2 - Math.floor((a2 + TOL) / H) * H <= 3) {
+          sisipKepala(u);
+          var hal2 = Math.floor((atas(u.el) + TOL) / H);
+          if (j > i && bawah(unit[j].akhir || unit[j].el) > (hal2 + 1) * H - LONGGAR + TOL) j = i;   // rantai tak muat lagi
+        }
+      }
+      i = j + 1;
+    }
+
+    var total = lembar.getBoundingClientRect().height;
+    return { tinggi: H, halaman: Math.max(1, Math.ceil((total - 2) / H)), pxCm: pxCm, dorongan: dorongan };
+  }
+
   /* ---------- keluaran ---------- */
   function bungkus(d) {
     return '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>' + E(d.judul) +
-      '</title><style>' + GAYA + '</style></head><body><div class="lembar">' + d.html + '</div></body></html>';
+      '</title><style>' + GAYA + GAYA_LAYAR + '</style></head><body><div class="lembar">' + rapikan(d.html) + '</div></body></html>';
   }
 
   function siapkan(id, ctx) {
@@ -586,7 +966,7 @@
           '<head><meta charset="utf-8"><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View>' +
           '<w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>' + GAYA +
           '@page WordSection1 { size:21cm 29.7cm; margin:2cm 2cm 2cm 2.5cm; } div.WordSection1 { page:WordSection1; }' +
-          '</style></head><body><div class="WordSection1">' + d.html + '</div></body></html>';
+          '</style></head><body><div class="WordSection1">' + rapikan(d.html, true) + '</div></body></html>';
         return {
           nama: d.judul.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 90) + '.doc',
           blob: new Blob(['\ufeff', html], { type: 'application/msword' })
@@ -602,15 +982,15 @@
       });
     },
     /* unduh sebagai berkas .pdf sungguhan, tanpa lewat dialog cetak peramban.
-       Dirender di iframe tersembunyi (ukuran cetak A4, tanpa padding bawaan --
-       margin ditangani di bawah supaya SETIAP halaman hasil potongan punya
-       margin yang sama, bukan cuma halaman pertama/terakhir), dirasterisasi
-       SEKALI oleh html2canvas, lalu kanvas itu dipotong sendiri per halaman:
-       titik potong dicari pada baris piksel yang nyaris putih (celah antar
-       baris/paragraf) di sekitar tinggi satu halaman, supaya baris tabel atau
-       teks tidak pernah terpotong tepat di batas kertas. (Fungsi bawaan jsPDF
-       pdf.html()/autoPaging tidak dipakai -- pada dokumen panjang/bertabel ia
-       bisa salah hitung skala dan menghasilkan ribuan halaman kosong.) */
+       Dirender di iframe tersembunyi berukuran cetak A4 (lebar isi 17 cm, tanpa padding
+       bawaan; margin 2 cm ditambahkan saat halaman PDF disusun). Isi DIPAGINASI lebih dulu
+       (lihat paginasi()): blok yang tak boleh terbelah -- baris tabel, paragraf, butir daftar,
+       tanda tangan -- yang melewati batas kertas didorong ke halaman berikutnya, pemisah
+       halaman paksa (.hal-baru) dihormati, dan kepala tabel diulang di halaman lanjutan.
+       Hasilnya dirasterisasi SEKALI oleh html2canvas lalu dipotong tepat per tinggi halaman.
+       (Fungsi bawaan jsPDF pdf.html()/autoPaging tidak dipakai -- pada dokumen panjang/bertabel
+       ia bisa salah hitung skala dan menghasilkan ribuan halaman kosong.) Bila paginasi gagal,
+       dipakai pemotongan piksel lama (mencari baris putih terdekat) sebagai cadangan. */
     unduhPdf: function (id, ctx) {
       return siapkan(id, ctx).then(function (d) {
         var jsPDFCtor = (w.jspdf && w.jspdf.jsPDF) || w.jsPDF;
@@ -626,64 +1006,85 @@
              berbayang-abu untuk pratinjau di layar) TANPA padding bawaan --
              margin fisik halaman ditambahkan sendiri di bawah (MARGIN_X/Y)
              supaya berlaku rata di setiap halaman hasil potongan, bukan cuma
-             di ujung atas dokumen pertama / ujung bawah dokumen terakhir. */
+             di ujung atas dokumen pertama / ujung bawah dokumen terakhir.
+             Pita "HALAMAN BARU" milik pratinjau dimatikan: pemisah halaman
+             ditangani paginasi(). */
           var override = '<style>@media screen{ body{background:#fff!important} ' +
             '.lembar{width:17cm!important;max-width:none!important;margin:0!important;' +
-            'padding:0!important;box-shadow:none!important;background:#fff!important} }</style>';
+            'padding:0!important;box-shadow:none!important;background:#fff!important} ' +
+            '.hal-baru{height:0!important;margin:0!important;border:0!important;background:none!important} ' +
+            '.hal-baru::after{display:none!important} }</style>';
           ifr.onload = function () {
             var lembar = ifr.contentDocument.querySelector('.lembar');
             if (!lembar) { bersihkan(); reject(new Error('Isi dokumen tidak ditemukan.')); return; }
-            w.html2canvas(lembar, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function (kanvas) {
+            var pag = null;
+            try { pag = paginasi(lembar); }
+            catch (e) { pag = null; if (w.console) console.warn('Paginasi PDF gagal, memakai pemotongan piksel:', e); }
+            var rc = lembar.getBoundingClientRect();
+            /* kanvas lebih tinggi dari ±32.000 px ditolak peramban (hasilnya kosong) -> turunkan skala */
+            var skala = Math.max(0.75, Math.min(2, 32000 / Math.max(1, rc.height)));
+            w.html2canvas(lembar, { scale: skala, useCORS: true, backgroundColor: '#ffffff' }).then(function (kanvas) {
               try {
                 var HAL_W = 21, HAL_H = 29.7;               // A4, cm
                 var MARGIN_X = 2, MARGIN_Y = 2;              // margin cetak per halaman, cm
                 var LEBAR_CM = HAL_W - MARGIN_X * 2;          // = 17, pas dengan lebar .lembar
                 var TINGGI_CM = HAL_H - MARGIN_Y * 2;
-                var pxPerCm = kanvas.width / LEBAR_CM;
-                var tinggiHalPx = Math.max(40, Math.round(pxPerCm * TINGGI_CM));
-                var ctxSumber = kanvas.getContext('2d');
+                var potongan = [], cursor = 0, tinggiHalPx, tinggiCm = TINGGI_CM, lebarPx = kanvas.width;
 
-                /* baris piksel di y dianggap "kosong" (aman dipotong) bila
-                   praktis semua sampelnya nyaris putih -- celah antar baris
-                   teks atau antar sel tabel. */
-                function barisKosong(y) {
-                  if (y <= 0 || y >= kanvas.height) return true;
-                  var data = ctxSumber.getImageData(0, y, kanvas.width, 1).data;
-                  var langkah = Math.max(1, Math.floor(kanvas.width / 300)) * 4;
-                  for (var i = 0; i < data.length; i += langkah) {
-                    if (data[i] < 246 || data[i + 1] < 246 || data[i + 2] < 246) return false;
+                if (pag) {
+                  /* tiap halaman persis setinggi pag.tinggi (px CSS) -> potong kelipatannya.
+                     html2canvas memetakan 1 px CSS = `skala` px kanvas PERSIS; kanvas sendiri
+                     dibulatkan ke atas lebarnya, jadi jangan menurunkan faktor dari
+                     kanvas.width / rc.width (selisih kecil itu menumpuk tiap halaman). */
+                  var fx = skala;
+                  lebarPx = Math.min(kanvas.width, Math.round(rc.width * fx));
+                  tinggiHalPx = Math.max(40, Math.round(pag.tinggi * fx));
+                  tinggiCm = pag.tinggi / pag.pxCm;
+                  for (var h = 0; h < Math.min(pag.halaman, 400); h++) {
+                    var mulai = Math.round(h * pag.tinggi * fx);
+                    if (mulai >= kanvas.height - 1) break;
+                    potongan.push({ mulai: mulai, tinggi: Math.min(tinggiHalPx, kanvas.height - mulai) });
                   }
-                  return true;
-                }
-                /* cari baris kosong terdekat dari target (maju/mundur), dalam
-                   jendela pencarian sekitar 1.5cm. tak ketemu -> potong apa adanya. */
-                function titikPotong(target) {
-                  if (target >= kanvas.height) return kanvas.height;
-                  var jendela = Math.round(pxPerCm * 1.5);
-                  for (var jarak = 0; jarak <= jendela; jarak++) {
-                    if (barisKosong(target - jarak)) return target - jarak;
-                    if (barisKosong(target + jarak)) return Math.min(kanvas.height, target + jarak);
+                } else {
+                  /* cadangan: potong buta, mencari baris piksel yang nyaris putih */
+                  var pxPerCm = kanvas.width / LEBAR_CM;
+                  tinggiHalPx = Math.max(40, Math.round(pxPerCm * TINGGI_CM));
+                  var ctxSumber = kanvas.getContext('2d');
+                  var barisKosong = function (y) {
+                    if (y <= 0 || y >= kanvas.height) return true;
+                    var data = ctxSumber.getImageData(0, y, kanvas.width, 1).data;
+                    var langkah = Math.max(1, Math.floor(kanvas.width / 300)) * 4;
+                    for (var i = 0; i < data.length; i += langkah) {
+                      if (data[i] < 246 || data[i + 1] < 246 || data[i + 2] < 246) return false;
+                    }
+                    return true;
+                  };
+                  var titikPotong = function (target) {
+                    if (target >= kanvas.height) return kanvas.height;
+                    var jendela = Math.round(pxPerCm * 1.5);
+                    for (var jarak = 0; jarak <= jendela; jarak++) {
+                      if (barisKosong(target - jarak)) return target - jarak;
+                      if (barisKosong(target + jarak)) return Math.min(kanvas.height, target + jarak);
+                    }
+                    return target;
+                  };
+                  while (cursor < kanvas.height) {
+                    var akhir = titikPotong(cursor + tinggiHalPx);
+                    if (akhir - cursor < tinggiHalPx * 0.25) akhir = Math.min(kanvas.height, cursor + tinggiHalPx);
+                    potongan.push({ mulai: cursor, tinggi: akhir - cursor });
+                    cursor = akhir;
                   }
-                  return target;
-                }
-
-                var potongan = [], cursor = 0;
-                while (cursor < kanvas.height) {
-                  var akhir = titikPotong(cursor + tinggiHalPx);
-                  if (akhir - cursor < tinggiHalPx * 0.25) akhir = Math.min(kanvas.height, cursor + tinggiHalPx);
-                  potongan.push({ mulai: cursor, tinggi: akhir - cursor });
-                  cursor = akhir;
                 }
 
                 var pdf = new jsPDFCtor({ unit: 'cm', format: 'a4', orientation: 'portrait' });
                 potongan.forEach(function (p, i) {
                   var potong = document.createElement('canvas');
-                  potong.width = kanvas.width; potong.height = tinggiHalPx;
+                  potong.width = lebarPx; potong.height = tinggiHalPx;
                   var ctx2d = potong.getContext('2d');
                   ctx2d.fillStyle = '#fff'; ctx2d.fillRect(0, 0, potong.width, potong.height);
-                  ctx2d.drawImage(kanvas, 0, p.mulai, kanvas.width, p.tinggi, 0, 0, kanvas.width, p.tinggi);
+                  ctx2d.drawImage(kanvas, 0, p.mulai, lebarPx, p.tinggi, 0, 0, lebarPx, p.tinggi);
                   if (i > 0) pdf.addPage();
-                  pdf.addImage(potong.toDataURL('image/jpeg', 0.95), 'JPEG', MARGIN_X, MARGIN_Y, LEBAR_CM, TINGGI_CM);
+                  pdf.addImage(potong.toDataURL('image/jpeg', 0.95), 'JPEG', MARGIN_X, MARGIN_Y, LEBAR_CM, tinggiCm);
                 });
                 pdf.save((d.judul || 'dokumen').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 90) + '.pdf');
                 bersihkan();

@@ -269,7 +269,17 @@
     for (var c = 0; c < m.cols; c++) if (!buang[c]) kolomPakai.push(c);
     var indeksBaru = {}; kolomPakai.forEach(function (c, i) { indeksBaru[c] = i; });
 
-    var html = '<table class="doc-tabel"><tbody>';
+    /* Baris kepala = baris m.header beserta baris di bawahnya yang tertutup rowspan selnya.
+       Diberi penanda data-kepala (dipakai docgen.js untuk mengulang kepala di halaman PDF
+       lanjutan). Bila kepala berada di baris paling atas, ia juga dibungkus <thead> supaya
+       diulang otomatis pada cetak dan Word. */
+    var hMulai = Math.max(0, Number(m.header) || 0), hAkhir = hMulai;
+    var barisH = m.rows[hMulai] || [];
+    for (var ch = 0; ch < m.cols; ch++) {
+      if (barisH[ch] && barisH[ch].rs > 1) hAkhir = Math.max(hAkhir, hMulai + barisH[ch].rs - 1);
+    }
+    var kepalaHtml = '';
+    var html = '';
     for (var r = 0; r < m.rows.length; r++) {
       var isi = '', adaIsi = false;
       for (var cc = 0; cc < m.cols; cc++) {
@@ -287,7 +297,11 @@
           ' class="' + (s.b ? 'tb ' : '') + (s.t === 'num' || s.t === 'rp' ? 'kanan' : '') + '">' +
           esc(teks).replace(/\n/g, '<br>') + '</td>';
       }
-      if (isi) html += '<tr>' + isi + '</tr>';
+      if (isi) {
+        var kepala = r >= hMulai && r <= hAkhir;
+        var tr = '<tr' + (kepala ? ' data-kepala="1"' : '') + '>' + isi + '</tr>';
+        if (kepala && hMulai === 0) kepalaHtml += tr; else html += tr;
+      }
     }
     if (!opt.tanpaHarga && m.map && m.map.jumlah != null) {
       var total = totalSaja(m);
@@ -305,7 +319,8 @@
         html += '<tr><td class="tb" colspan="' + span + '">Pembulatan</td><td class="tb kanan">' + Fmt.num(akhir, 0) + '</td></tr>';
       }
     }
-    return html + '</tbody></table>';
+    return '<table class="doc-tabel">' + (kepalaHtml ? '<thead>' + kepalaHtml + '</thead>' : '') +
+      '<tbody>' + html + '</tbody></table>';
   }
 
   /* ---------- pustaka Excel dimuat hanya saat dibutuhkan ---------- */

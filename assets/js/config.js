@@ -17,6 +17,8 @@ window.CONFIG = {
   SESSION_KEY: 'sipadu.session',
   API_KEY: 'sipadu.api',
   LOGO: 'assets/img/logo-kemenag.png', // ganti dengan logo resmi, .png transparan
+  LOGO_CM: 2.3,                        // sisi terpanjang logo pada kop dokumen (cm), rentang 1-5. Resolusi berkas bebas:
+                                       // logo diperkecil otomatis dan proporsi aslinya dijaga (pratinjau, cetak, .pdf, .doc)
 
   JENIS_SATKER: ['MAN', 'MIN', 'MTsN', 'KUA', 'PENDIS', 'SEKJEN'],
 

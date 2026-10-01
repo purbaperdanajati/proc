@@ -160,6 +160,12 @@ dialog cetak peramban), **Unduh .doc** (bisa dibuka dan diedit lagi di Word), da
 (langsung mengunggah hasilnya sebagai salah satu dari 15 dokumen paket). Tombol Pratinjau yang sama
 juga muncul di tab **HPS / RAB** dan di tab **Berkas (15)** (kolom "Buat") untuk dokumen yang relevan.
 
+**Tata letak halaman (PDF, .doc, cetak).** Baris tabel, paragraf, butir daftar, dan blok tanda tangan tidak
+dipotong di batas halaman — yang tidak muat dipindah utuh ke halaman berikutnya, dan kepala tabel HPS/RAB
+diulang di halaman lanjutan. Pada dokumen gabungan **KAK + HPS + RAB** (syarat 4), HPS selalu dimulai di
+halaman baru dengan kop dan nomor suratnya sendiri, meski berkasnya tetap satu. Pratinjau menandai titik
+itu dengan pita "HALAMAN BARU".
+
 ### Format kolom HPS/RAB
 Kolom kisi HPS otomatis mengikuti jenis pengadaan, dan bisa ditukar kapan pun lewat tombol
 **"Format baku"** di editor:
@@ -209,6 +215,11 @@ PNG dengan latar transparan, minimal 256×256 px. Logo ini otomatis tampil di ha
 navigasi, serta kop seluruh dokumen yang dicetak (termasuk yang diunduh sebagai `.doc`, karena logo
 diubah menjadi data URI agar ikut terbawa). Bila belum ada, aplikasi tetap berjalan normal — kotak
 logo hanya kosong, tanpa gambar rusak. Lihat juga `assets/img/LETAKKAN_LOGO_DI_SINI.txt`.
+
+Resolusi berkas bebas (mis. 3694×3513 px aman): saat dokumen dibuat, logo diperkecil otomatis di
+perangkat dan ditampilkan dengan sisi terpanjang **2,3 cm** (proporsi asli dijaga), sama untuk pratinjau,
+cetak, `.pdf`, dan `.doc`. Untuk memperbesar atau memperkecil, ubah `LOGO_CM` di `assets/js/config.js`
+(rentang 1–5).
 
 ---
 
