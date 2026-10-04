@@ -211,6 +211,18 @@
   }
   function rupiahTerbilang(n) { return Fmt.rp(n) + ' (' + Fmt.kapital(Fmt.terbilang(n)) + ' Rupiah)'; }
 
+  /* Teks "Sumber Dana" di KAK butir 6 mengikuti isi combobox Sumber dana (tab Data paket):
+       "DIPA (BOS)"       -> "DIPA (BOS) Satker <nama satker>"
+       "DIPA Satker"      -> "DIPA Satker <nama satker>"        (kata "Satker" tidak dobel)
+       "DIPA Operasional Perkantoran" -> "DIPA Operasional Perkantoran Satker <nama satker>"
+     Isian yang sudah memuat nama satker dicetak apa adanya. */
+  function sumberDanaTeks(sumber, namaSatker) {
+    var sd = String(sumber == null ? '' : sumber).trim() || 'DIPA';
+    var nama = String(namaSatker || '').trim();
+    if (!nama || sd.toLowerCase().indexOf(nama.toLowerCase()) >= 0) return sd;
+    return /satker\s*$/i.test(sd) ? sd + ' ' + nama : sd + ' Satker ' + nama;
+  }
+
   /* daftar item HPS {uraian, volume, satuan} — dipakai T.bast & T.monev. HPS.daftarItem
      baru ada sejak fitur Monev; kalau hps.js di server belum diperbarui, jangan sampai
      dokumen gagal total karena TypeError — anggap saja daftar itemnya kosong (kedua
@@ -290,7 +302,7 @@
     }
     var body = `
       <h1 class="judul">KERANGKA ACUAN KERJA (KAK) / SPESIFIKASI TEKNIS<br>${E(pk.nama || '')}<br>PADA ${E((s.nama || '').toUpperCase())}</h1>
-      ${c.nomor ? '<p class="nomor">Nomor : ' + E(c.nomor) + '</p>' : '<div class="spasi"></div>'}
+      <div class="spasi"></div>
       <table class="tata">
         ${br('Pekerjaan', E(pk.nama || ''))}
         ${br('1. LATAR BELAKANG', `<p>Peningkatan kualitas pelayanan publik melalui penyelenggaraan pendidikan dan pelayanan keagamaan yang baik perlu didukung pengelolaan keuangan yang efektif, efisien, transparan, dan akuntabel. Pengadaan barang/jasa yang dibiayai APBN dilaksanakan dengan mengedepankan keterbukaan dan akuntabilitas sehingga diperoleh barang/jasa yang terjangkau dan berkualitas serta dapat dipertanggungjawabkan dari segi fisik, keuangan, maupun manfaatnya.</p>
@@ -308,7 +320,7 @@
             <tr><td></td><td>PPK</td><td>:</td><td>${E(c.ppk && c.ppk.nama || '-')}</td></tr>
             <tr><td></td><td>PP</td><td>:</td><td>${E(c.pp && c.pp.nama || '-')}</td></tr></table>`)}
         ${br('6. SUMBER DANA DAN PEMBIAYAAN', `<table class="tata">
-            <tr><td style="width:.5cm">a.</td><td style="width:4.2cm">Sumber Dana</td><td style="width:.3cm">:</td><td>${E(pk.sumber_dana || j.sumber || 'DIPA')} Satker ${E(s.nama || '')}</td></tr>
+            <tr><td style="width:.5cm">a.</td><td style="width:4.2cm">Sumber Dana</td><td style="width:.3cm">:</td><td>${E(sumberDanaTeks(pk.sumber_dana || j.sumber || 'DIPA', s.nama))}</td></tr>
             <tr><td>b.</td><td>Total Perkiraan Biaya</td><td>:</td><td>${E(rupiahTerbilang(pagu))}</td></tr></table>`)}
         ${br('7. JENIS KONTRAK', `<table class="tata">
             <tr><td style="width:.5cm">a.</td><td style="width:5.6cm">Kontrak berdasarkan cara pembayaran</td><td style="width:.3cm">:</td><td>${E(pk.jenis_kontrak || 'Kontrak Harga Satuan')}</td></tr>
@@ -338,7 +350,6 @@
     var body = `
       <h1 class="judul" style="font-size:15pt">HARGA PERKIRAAN SENDIRI (HPS)</h1>
       <p class="tengah" style="margin-top:-6px">${E(pk.nama || '')}<br>${E(s.nama || '')}</p>
-      ${c.nomor ? '<p class="nomor">Nomor : ' + E(c.nomor) + '</p>' : ''}
       ${tabel}
       <p class="kecil">Terbilang : ${E(Fmt.kapital(Fmt.terbilang(total)))} Rupiah</p>
       ${ttd(null, { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip })}`;
@@ -348,8 +359,8 @@
   /* dokumen gabungan untuk syarat #4 "KAK, HPS + RAB": KAK/Spesifikasi Teknis
      (tanpa harga) diikuti HPS (dengan harga, PPN, total) yang SELALU mulai di
      halaman baru (.hal-baru; dipatuhi cetak, .doc, dan .pdf) dengan kop sendiri --
-     satu berkas, tapi masing-masing tetap memakai nomor & tanggal suratnya
-     sendiri (no_kak/tgl_kak, no_hps/tgl_hps) dari data paket. */
+     satu berkas, tanpa nomor surat; masing-masing memakai tanggalnya sendiri
+     (tgl_kak, tgl_hps) dari data paket. */
   T.kak_hps = function (c) {
     var pk = c.paket || {}, m = pk.meta || {};
     function salin(tambahan) {
@@ -357,8 +368,8 @@
       for (var k2 in tambahan) o[k2] = tambahan[k2];
       return o;
     }
-    var kak = T.kak(salin({ nomor: m.no_kak || '', tanggal: m.tgl_kak || new Date() }));
-    var hps = T.hps(salin({ nomor: m.no_hps || '', tanggal: m.tgl_hps || new Date() }));
+    var kak = T.kak(salin({ nomor: '', tanggal: m.tgl_kak || new Date() }));
+    var hps = T.hps(salin({ nomor: '', tanggal: m.tgl_hps || new Date() }));
     return {
       judul: 'KAK, HPS & RAB - ' + (pk.nama || ''),
       html: kak.html + '<div class="hal-baru"></div>' + hps.html
@@ -456,11 +467,13 @@
 
   /* BA Pembayaran — nomor/tanggal dari field "BA Pembayaran" (no_bayar/tgl_bayar).
      Nilai kontrak diambil dari Nilai kontrak paket (dianggap sudah termasuk PPN); bila kosong,
-     dipakai total HPS. DPP = nilai / (1 + PPN%), PPN% mengikuti pengaturan pada rincian HPS (baku 11%). */
+     dipakai total HPS. DPP = nilai / (1 + PPN%), PPN% mengikuti pengaturan pada rincian HPS (baku 11%).
+     Jenis pengadaan tanpa PPN (JENIS_PENGADAAN[].ppn === false, mis. buku): PPN 0 dan barisnya tidak dicetak. */
   T.bayar = function (c) {
     var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {}, ppk = c.ppk || {};
     var nilai = Number(pk.nilai) || (c.hps && c.hps.rows ? HPS.totalAkhir(c.hps) : 0);
-    var ppnPersen = (c.hps && c.hps.ppn != null && c.hps.ppn !== '') ? Number(c.hps.ppn) || 0 : 11;
+    var kenaPpn = !(c.jenis && c.jenis.ppn === false);          // jenis tanpa PPN (mis. buku): tanpa rincian PPN
+    var ppnPersen = !kenaPpn ? 0 : ((c.hps && c.hps.ppn != null && c.hps.ppn !== '') ? Number(c.hps.ppn) || 0 : 11);
     var dpp = ppnPersen ? Math.round(nilai / (1 + ppnPersen / 100)) : nilai;
     var ppn = nilai - dpp;
     var namaRek = v.nama_rekening || v.nama || '..........';

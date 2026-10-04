@@ -125,40 +125,57 @@ sekali di halaman masuk, dan alamat itu akan tersimpan di perangkat masing-masin
 | 4 | Masukkan data penyedia sekali di awal — company profile yang diunggah akan dipakai ulang otomatis untuk paket lain dengan penyedia yang sama | **Penyedia** |
 | 5 | Buat paket pengadaan per satker: pilih jenis, isi pagu | **Paket pengadaan** |
 | 6 | Isi rincian HPS/RAB — tempel dari Excel, impor `.xlsx`, atau ketik manual | Tab **HPS/RAB** pada detail paket |
-| 7 | Unggah 15 dokumen wajib satu per satu | Tab **Berkas (15)** |
+| 7 | Unggah dokumen wajib satu per satu — jumlah dan jenisnya menyesuaikan jenis & metode pengadaan paket | Tab **Berkas** |
 | 8 | Setelah pekerjaan selesai: nilai realisasi tiap item HPS (jumlah diterima vs. direncanakan, keterangan bila ada selisih) dan unggah foto bukti/dokumentasi | Tab **Menilai (Monev)** |
-| 9 | Isi nomor & tanggal surat pada tab **Data paket**, lalu klik **Pratinjau** di sebelah nomor surat yang bersangkutan untuk cetak KAK/HPS/SK/BAST/Monev | Tab **Data paket** |
-| 10 | Pantau pita 15-segmen di Beranda — hijau penuh berarti paket itu *complete* secara dokumen | **Beranda** |
+| 9 | Isi nomor & tanggal surat pada tab **Data paket** (KAK dan HPS cukup tanggal — tanpa nomor surat), lalu klik **Pratinjau** di sebelahnya untuk cetak KAK/HPS/SK/BAST/Monev | Tab **Data paket** |
+| 10 | Pantau pita kelengkapan di Beranda — hijau penuh berarti paket itu *complete* secara dokumen (segmen arsir = dokumen tidak berlaku untuk paket itu) | **Beranda** |
 
 ---
 
 ## 7. Dokumen dan penomoran
 
-### 15 dokumen wajib per paket
-SK PPK · SK PP · RUP · KAK+HPS+RAB · Surat Pesanan · Dokumentasi & surat jalan (sebelum/proses/
-setelah, multi-berkas) · BAST Inaproc (**tidak diperlukan** untuk pemeliharaan gedung, RM maupun BOS) ·
-**BA Pemeriksaan Barang (8)** · BAST Manual (9) · **BA Pembayaran (10)** · SPM · SP2D · Faktur & Bupot
-(hanya bila paket ditandai *Ada PPh*) · Company profile (otomatis terisi dari data Penyedia) · Hasil Monev &
-dokumentasinya.
+### Dokumen wajib per paket
+Ada 19 jenis dokumen (`DOKUMEN` di `config.js`), tetapi yang **diperlukan** berbeda tiap paket. Dokumen yang tidak
+berlaku tampil abu-abu "Tidak diperlukan untuk paket ini", tidak dihitung dalam kelengkapan, dan jumlah di label
+tab **Berkas (n)** serta ringkasan paket mengikuti jenis & metode pengadaan paket itu.
+
+| Dokumen | Berlaku untuk |
+|---|---|
+| SK PPK · SK PP · RUP · KAK+HPS+RAB · Surat Pesanan · BA Pemeriksaan Barang · BAST Manual · BA Pembayaran · SPM · SP2D · Company profile (otomatis dari data Penyedia) · Hasil Monev dan dokumentasinya | semua paket |
+| Dokumentasi dan surat jalan (tahap: sebelum / proses / setelah / surat jalan; multi-berkas) | semua paket. Pada **pemeliharaan gedung** menjadi "Dokumentasi" dan tahap *Surat jalan* tidak ditawarkan |
+| BAST Inaproc | semua jenis **kecuali** pemeliharaan gedung (RM maupun BOS) |
+| Faktur dan Bupot | hanya bila paket ditandai *Ada PPh* |
+| Uraian pekerjaan singkat · SPPBJ · Nota Dinas | hanya metode **Pengadaan Langsung** (sementara diunggah manual; template cetaknya menyusul) |
+| Siteplan | hanya **pemeliharaan gedung** (Perkantoran / BOS) |
 
 Urutan tampil = urutan larik `DOKUMEN` di `config.js`. Nomor di layar dihitung dari posisi (`dokNo()`), sedangkan
-`kode` adalah ID tetap di server (BA Pemeriksaan = 14, BA Pembayaran = 15) supaya berkas lama tidak bergeser.
-Nama berkas di Drive memakai `kode` sebagai awalan, jadi bisa berbeda dari nomor di layar.
-Aturan "tidak diperlukan" ditulis di `config.js` lewat properti `kecuali` (daftar id jenis pengadaan) dan
-dievaluasi oleh `dokPerlu()` untuk pita, tab Berkas, dan hitungan kelengkapan.
+`kode` adalah ID tetap di server (BA Pemeriksaan = 14, BA Pembayaran = 15, Uraian pekerjaan singkat = 16,
+SPPBJ = 17, Nota Dinas = 18, Siteplan = 19) supaya berkas lama tidak bergeser — memindahkan sebuah baris di
+`DOKUMEN` hanya mengubah urutan/nomor tampil. Nama berkas di Drive memakai `kode` sebagai awalan.
+Aturan berlaku-tidaknya ditulis di `config.js` lewat properti `kecuali`, `hanyaJenis`, `hanyaMetode` (daftar id
+jenis / nama metode) dan `bersyarat`, lalu dievaluasi oleh `dokPerlu()` untuk pita, tab Berkas, dan hitungan
+kelengkapan. `subsKecuali` dan `namaUntuk` menyesuaikan tahap & nama dokumen per jenis (dipakai dokumen
+Dokumentasi). Untuk menambah generator cetak pada dokumen baru, cukup isi properti `generate` dan tambahkan
+templatnya di `docgen.js`.
 
 ### 8 dokumen yang bisa dibuat otomatis (tab Data paket)
 KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev, BA Pemeriksaan Barang, BA Pembayaran — masing-masing punya field
-nomor dan tanggal surat sendiri di tab **Data paket**, tepat di sebelahnya ada tombol **Pratinjau**
-(nonaktif dulu simpan perubahan bila nomor baru saja diubah, agar dokumen memuat nomor terbaru).
+nomor dan tanggal surat sendiri di tab **Data paket** (khusus **KAK dan HPS hanya tanggal**: dokumen ini tidak memakai
+nomor surat, jadi barisnya tidak dicetak), tepat di sebelahnya ada tombol **Pratinjau**
+(simpan perubahan dulu bila nomor/tanggal baru saja diubah, agar dokumen memuat nilai terbaru).
 Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu terisi otomatis dari data Satker, Penugasan, dan Paket.
 
 **Seluruh dokumen dirakit di peramban pengguna** (`docgen.js`) — server Apps Script tidak pernah
 menyusun dokumen, hanya menyimpan data dan berkas. Klik **Pratinjau** membuka jendela pop-up berisi
 dokumennya beserta tiga pilihan aksi di bagian bawah (`.modal-foot`): **Cetak / simpan PDF** (lewat
 dialog cetak peramban), **Unduh .doc** (bisa dibuka dan diedit lagi di Word), dan **Simpan ke berkas**
-(langsung mengunggah hasilnya sebagai salah satu dari 15 dokumen paket). Tombol Pratinjau yang sama
-juga muncul di tab **HPS / RAB** dan di tab **Berkas (15)** (kolom "Buat") untuk dokumen yang relevan.
+(langsung mengunggah hasilnya sebagai salah satu dokumen paket). Tombol Pratinjau yang sama
+juga muncul di tab **HPS / RAB** dan di tab **Berkas** (kolom "Buat") untuk dokumen yang relevan.
+
+**Sumber dana.** Field *Sumber dana* di tab **Data paket** adalah combobox: pilih dari daftar (`SUMBER_DANA` di
+`config.js`: DIPA (BOS), DIPA Satker, DIPA Operasional Perkantoran) atau ketik sendiri. Isinya dicetak di KAK butir 6;
+kata "Satker" dan nama satker ditambahkan otomatis bila belum ada (mis. "DIPA Satker" → "DIPA Satker Madrasah Aliyah
+Negeri 1 Indramayu"). Isian awal paket baru mengikuti jenis pengadaannya (`sumber` pada `JENIS_PENGADAAN`).
 
 **Tata letak halaman (PDF, .doc, cetak).** Baris tabel, paragraf, butir daftar, dan blok tanda tangan tidak
 dipotong di batas halaman — yang tidak muat dipindah utuh ke halaman berikutnya, dan kepala tabel HPS/RAB
@@ -172,8 +189,19 @@ Kolom kisi HPS otomatis mengikuti jenis pengadaan, dan bisa ditukar kapan pun le
 
 | Jenis pengadaan | Susunan kolom |
 |---|---|
-| Pemeliharaan Gedung (Perkantoran / BOS) | NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN (Rp) · TOTAL (Rp) |
-| Peralatan dan Mesin, Buku, Ekstrakomptabel | NO. · NAMA · SPESIFIKASI · VOL · HARGA SATUAN · JUMLAH |
+| Pemeliharaan Gedung (Perkantoran / BOS) | NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN (Rp) · PPN (Rp) · TOTAL (Rp) |
+| Peralatan dan Mesin, Ekstrakomptabel, Belanja Lainnya | NO. · NAMA · SPESIFIKASI · VOLUME · SATUAN · HARGA SATUAN (Rp) · PPN (Rp) · TOTAL (Rp) |
+| Belanja Lainnya (Buku) — **tanpa PPN** | NO. · NAMA · SPESIFIKASI · VOLUME · SATUAN · HARGA SATUAN (Rp) · TOTAL (Rp) |
+
+Kolom **PPN** berisi nominal PPN tiap baris (volume × harga satuan × PPN%), dan **TOTAL** = volume × harga satuan + PPN;
+tombol **Hitung** mengisi keduanya. Tabel spesifikasi di KAK tidak menampilkan harga, PPN, maupun total.
+Jenis tanpa PPN ditandai `ppn: false` pada `JENIS_PENGADAAN` di `config.js` (baku: hanya buku): kolom PPN tidak
+ada, persen PPN dikunci 0, dan BA Pembayaran tidak mencetak rincian PPN (DPP = nilai kontrak). Ingin jenis lain
+tanpa PPN (mis. Ekstrakomptabel)? Cukup ubah `ppn` jenis itu menjadi `false`.
+
+Rincian HPS yang sudah tersimpan **tidak diubah otomatis**. Bila belum punya kolom PPN (jenis yang dikenai PPN),
+editor menampilkan tombol **Tambah kolom PPN** yang menyisipkan kolom tepat sebelum TOTAL tanpa menghapus isian;
+atau pakai **Format baku** untuk memulai dari susunan baru.
 
 Menempel langsung dari Excel (termasuk sel gabung) atau mengimpor `.xlsx` akan menimpa susunan ini
 dengan struktur asli berkas sumbernya; peran tiap kolom (mana yang volume, harga, jumlah) bisa
@@ -273,7 +301,7 @@ Simpan juga URL deployment (`/exec`) dan kredensial admin di tempat yang aman.
 ## 12. Pengembangan lanjutan (opsional, belum termasuk dalam versi ini)
 
 - Generator otomatis untuk **Surat Pesanan** belum dibuat; tetap bisa diunggah manual sebagai berkas biasa.
-- **BA Pembayaran** mengambil *Nilai kontrak* paket sebagai nilai yang sudah termasuk PPN, lalu memecahnya menjadi DPP + PPN (persen PPN mengikuti pengaturan HPS, baku 11%). Pembayaran diasumsikan sekali bayar 100%, addendum diisi "-". Bank & rekening diambil dari data Penyedia.
+- **BA Pembayaran** mengambil *Nilai kontrak* paket sebagai nilai yang sudah termasuk PPN, lalu memecahnya menjadi DPP + PPN (persen PPN mengikuti pengaturan HPS, baku 11%; untuk jenis tanpa PPN seperti buku, baris PPN tidak dicetak dan DPP = nilai kontrak). Pembayaran diasumsikan sekali bayar 100%, addendum diisi "-". Bank & rekening diambil dari data Penyedia.
 - **31 KUA** perlu ditambahkan satu per satu lewat menu Satuan kerja (tidak semua KUA memiliki pengadaan setiap tahun — tandai lewat Penugasan → "Tidak ada pengadaan" agar tidak ikut dihitung dalam statistik kelengkapan).
 - Bila jumlah baris `Log` sangat besar di kemudian hari, pertimbangkan memindahkannya ke Spreadsheet terpisah agar `Config`/`Paket`/`Dokumen` tetap ringan dibaca.
 

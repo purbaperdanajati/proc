@@ -7,6 +7,7 @@
      dipanggil pada undefined. Tambahkan daftar Anda sendiri di config.js kapan saja. */
   var METODE_OPSI = C.METODE_PENGADAAN || ['Pengadaan Langsung', 'Penunjukan Langsung', 'E-Purchasing'];
   var KONTRAK_OPSI = C.JENIS_KONTRAK || ['Kontrak Harga Satuan', 'Kontrak Lumsum', 'Kontrak Gabungan Lumsum dan Harga Satuan'];
+  var SUMBER_OPSI = C.SUMBER_DANA || ['DIPA (BOS)', 'DIPA Satker', 'DIPA Operasional Perkantoran'];
 
   function jenisOpsi() {
     return C.JENIS_PENGADAAN.map(function (j) { return { value: j.id, label: j.nama }; });
@@ -132,7 +133,7 @@
       function gambarRingkas() {
         var m = petaDok(), adaMap = {};
         Object.keys(m).forEach(function (k) { adaMap[k] = m[k].length; });
-        var h = w.hitungLengkap({ dok: adaMap, ada_pph: p.ada_pph });
+        var h = w.hitungLengkap({ dok: adaMap, ada_pph: p.ada_pph, jenis: p.jenis, metode: p.metode });
         clear(ringkas).appendChild(el('div.badan', null, [
           el('div.baris', null, [
             el('div', null, [
@@ -150,10 +151,14 @@
       }
 
       var tabBar = el('div.tab'), panel = el('div');
+      function segarkanLabelBerkas() {
+        var btn = $$('button', tabBar)[2];       // urutan tab: Data paket, HPS / RAB, Berkas, Menilai
+        if (btn) btn.textContent = 'Berkas (' + w.dokJumlah(p) + ')';
+      }
       var tabs = [
         { id: 'umum', label: 'Data paket', render: tabUmum },
         { id: 'hps', label: 'HPS / RAB', render: tabHPS },
-        { id: 'dok', label: 'Berkas (' + C.DOKUMEN.length + ')', render: tabDok },
+        { id: 'dok', label: 'Berkas (' + w.dokJumlah(p) + ')', render: tabDok },
         { id: 'monev', label: 'Menilai (Monev)', render: tabMonev }
       ];
       var aktif = (ctx.params && ctx.params.tab) || 'umum';
@@ -224,9 +229,10 @@
         form.appendChild(fJenisKontrak);
         form.appendChild(kotakKontrakLain);
         [
-          { name: 'jenis_kontrak', label: 'Jenis kontrak', value: p.jenis_kontrak || 'Kontrak Harga Satuan' },
           { name: 'jangka_waktu', label: 'Jangka waktu (hari kalender)', type: 'number', value: p.jangka_waktu || 14 },
-          { name: 'sumber_dana', label: 'Sumber dana', value: p.sumber_dana || App.jenis(p.jenis).sumber },
+          /* combobox: pilih dari daftar atau ketik sendiri; teksnya dicetak di KAK butir 6 */
+          { name: 'sumber_dana', label: 'Sumber dana', type: 'combo', options: SUMBER_OPSI,
+            value: p.sumber_dana || App.jenis(p.jenis).sumber, placeholder: 'Pilih atau ketik sendiri' },
           { name: 'lokasi', label: 'Lokasi pekerjaan', value: p.lokasi || s.nama, wide: true },
           { name: 'kpa_id', label: 'KPA', type: 'select', value: p.kpa_id || tugas.kpa_id, options: B.opsiDari(pejabat, lbl) },
           { name: 'ppk_id', label: 'PPK', type: 'select', value: p.ppk_id || tugas.ppk_id, options: B.opsiDari(pejabat, lbl) },
@@ -236,7 +242,7 @@
         var formNo = el('form.rapi', { onsubmit: function (e) { e.preventDefault(); } });
         [
           { k: 'sk_ppk', l: 'SK PPK', gen: 'sk_ppk' }, { k: 'sk_pp', l: 'SK PP', gen: 'sk_pp' },
-          { k: 'kak', l: 'KAK', gen: 'kak' }, { k: 'hps', l: 'HPS', gen: 'hps' },
+          { k: 'kak', l: 'KAK', gen: 'kak', tanpaNomor: true }, { k: 'hps', l: 'HPS', gen: 'hps', tanpaNomor: true },
           { k: 'sp', l: 'Surat Pesanan / SPK' }, { k: 'bast', l: 'BAST', gen: 'bast' },
           { k: 'bap', l: 'BA Pemeriksaan Barang', gen: 'bap' }, { k: 'bayar', l: 'BA Pembayaran', gen: 'bayar' },
           { k: 'monev', l: 'Laporan Monev', gen: 'monev' }
@@ -247,7 +253,7 @@
               x.gen ? el('button.btn.kecil', { type: 'button', onclick: function () { cetakDok(x.gen); } }, 'Pratinjau') : null
             ]),
             el('div.grid2', null, [
-              UI.field({ name: 'no_' + x.k, label: 'Nomor', value: meta['no_' + x.k] || '' }),
+              x.tanpaNomor ? null : UI.field({ name: 'no_' + x.k, label: 'Nomor', value: meta['no_' + x.k] || '' }),
               UI.field({ name: 'tgl_' + x.k, label: 'Tanggal', type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) })
             ])
           ]));
@@ -271,6 +277,7 @@
             meta = m;
             UI.toast('Perubahan tersimpan', 'ok');
             gambarRingkas();
+            segarkanLabelBerkas();           // jenis/metode bisa mengubah jumlah dokumen yang diperlukan
           }).catch(function (e) { selesai(); UI.err(e); }).then(selesai);
         }
 
@@ -293,7 +300,8 @@
         var box = el('div'), editorRef = null, berubah = false;
         var info = el('p.mini', {
           text: hpsModel ? 'Terakhir disimpan di server.' :
-            'Belum ada rincian — kolom disiapkan mengikuti format ' + (App.jenis(p.jenis).rab ? 'pemeliharaan gedung' : 'barang/buku/ekstrakomptabel') +
+            'Belum ada rincian — kolom disiapkan mengikuti format ' +
+            (App.jenis(p.jenis).rab ? 'pemeliharaan gedung (dengan PPN)' : (w.jenisKenaPpn(p.jenis) ? 'barang (dengan PPN)' : 'barang (tanpa PPN)')) +
             '. Tempel dari Excel, impor .xlsx, atau ganti lewat tombol "Format baku".'
         });
         /* hpsModel di-update live agar pratinjau & dokumen memakai rincian terkini */
@@ -336,7 +344,7 @@
             var item = el('div.dok-item' + (berkas.length ? '.ada' : '') + (!perlu ? '.na' : ''), null, [
               el('div.dok-no', { text: String(w.dokNo(d.kode)) }),
               el('div', null, [
-                el('div.dok-nama', { text: d.nama }),
+                el('div.dok-nama', { text: w.dokNama(d, p) }),
                 !perlu ? el('div.dok-file', null, [el('span.diam', { text: 'Tidak diperlukan untuk paket ini' })]) :
                   berkas.length ? el('div', null, berkas.map(function (b) {
                     return el('div.dok-file', null, [
@@ -366,12 +374,12 @@
                   ? el('span.mini', { text: 'pilih penyedia dulu' })
                   : perlu ? el('button.btn.kecil' + (berkas.length && !d.multi ? '' : '.primary'), {
                     onclick: function () {
-                      Unggah.dialog('Unggah ' + d.nama, { paket_id: p.id, kode: d.kode }, function (row) {
+                      Unggah.dialog('Unggah ' + w.dokNama(d, p), { paket_id: p.id, kode: d.kode }, function (row) {
                         if (!d.multi) dok = dok.filter(function (x) { return String(x.kode) !== String(d.kode); });
                         dok.push(row);
                         Store.drop('paket.' + App.state.tahun);
                         gambar(); gambarRingkas();
-                      }, { subs: d.subs });
+                      }, { subs: w.dokSubs(d, p) });
                     }
                   }, berkas.length && !d.multi ? 'Ganti' : 'Unggah') : null
               ])
@@ -381,7 +389,7 @@
         }
         gambar();
         host2.appendChild(el('div.kartu', null, [
-          el('header', null, [el('h2', { text: 'Kelengkapan ' + C.DOKUMEN.length + ' dokumen' }),
+          el('header', null, [el('h2', { text: 'Kelengkapan ' + w.dokJumlah(p) + ' dokumen' }),
             el('span.kanan.mini', { text: 'Berkas tersimpan di folder Drive satker' })]),
           el('div.badan', null, [daftar])
         ]));
@@ -564,7 +572,7 @@
           sp_dipa: tugas.sp_dipa, hps: hpsModel, monev: monevData, dokumen: dok,
           kota: (App.state.master.config && App.state.master.config.kota) || 'Indramayu',
           jabatan_kpa: s.jabatan_kpa || 'Kepala Satuan Kerja',
-          nomor: m['no_' + kunci] || '', tanggal: m['tgl_' + kunci] || new Date(),
+          nomor: gen.tanpaNomor ? '' : (m['no_' + kunci] || ''), tanggal: m['tgl_' + kunci] || new Date(),
           no_sp: m.no_sp, tgl_sp: m.tgl_sp, no_sk_ppk: m.no_sk_ppk, tgl_sk_ppk: m.tgl_sk_ppk,
           no_bap: m.no_bap, tgl_bap: m.tgl_bap, no_bayar: m.no_bayar, tgl_bayar: m.tgl_bayar
         };

@@ -319,6 +319,7 @@
     field: function (o) {
       var id = 'f_' + (o.name || Math.random().toString(36).slice(2));
       var input;
+      if (o.type === 'combo') return UI.combo(o, id);
       if (o.type === 'select') {
         input = el('select', { id: id, name: o.name, required: o.required });
         (o.options || []).forEach(function (op) {
@@ -373,6 +374,98 @@
         o.hint ? el('small.hint', { text: o.hint }) : null
       ]);
     },
+    /* combobox: kotak isian biasa yang boleh diketik bebas + tombol ▾ untuk memilih dari daftar.
+       o.options = larik teks (atau {value,label}); daftar selalu menampilkan SEMUA pilihan saat dibuka
+       lewat tombol / panah bawah, dan menyaring sesuai ketikan saat mengetik. */
+    combo: function (o, id) {
+      var opsi = (o.options || []).map(function (x) {
+        return typeof x === 'object' ? { value: String(x.value), label: String(x.label != null ? x.label : x.value) } : { value: String(x), label: String(x) };
+      });
+      var listId = id + '_daftar';
+      var input = el('input', {
+        id: id, name: o.name, type: 'text', required: o.required, placeholder: o.placeholder || '',
+        autocomplete: 'off', role: 'combobox', 'aria-autocomplete': 'list', 'aria-expanded': 'false', 'aria-controls': listId
+      });
+      input.value = o.value == null ? '' : o.value;
+      if (o.readonly) input.setAttribute('readonly', 'readonly');
+      var daftar = el('ul.combo-daftar', { id: listId, role: 'listbox', hidden: true });
+      var tombol = el('button.combo-btn', { type: 'button', tabindex: '-1', 'aria-label': 'Tampilkan pilihan', title: 'Pilihan' }, '\u25BE');
+      var kotak = el('div.combo', null, [input, tombol, daftar]);
+      var aktif = -1, tampil = [], sedangPilih = false;
+
+      function gambar(saring) {
+        var q = saring ? input.value.trim().toLowerCase() : '';
+        tampil = opsi.filter(function (x) { return !q || x.label.toLowerCase().indexOf(q) >= 0; });
+        clear(daftar);
+        tampil.forEach(function (x, i) {
+          var sama = x.value.toLowerCase() === input.value.trim().toLowerCase();
+          daftar.appendChild(el('li', {
+            role: 'option', id: listId + '_' + i, 'aria-selected': sama ? 'true' : 'false', class: sama ? 'dipilih' : '',
+            onmousedown: function (e) { e.preventDefault(); },                 // jaga fokus tetap di kotak isian
+            onclick: function (e) { e.preventDefault(); e.stopPropagation(); pilih(i); }
+          }, x.label));
+        });
+        aktif = -1;
+        return tampil.length;
+      }
+      function buka(saring) {
+        if (input.readOnly) return;
+        if (!gambar(saring)) { tutup(); return; }
+        daftar.hidden = false; kotak.classList.add('buka'); input.setAttribute('aria-expanded', 'true');
+        if (UI._comboBuka && UI._comboBuka !== tutup) UI._comboBuka();
+        UI._comboBuka = tutup;
+      }
+      function tutup() {
+        daftar.hidden = true; kotak.classList.remove('buka'); input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant'); aktif = -1;
+        if (UI._comboBuka === tutup) UI._comboBuka = null;
+      }
+      function sorot(i) {
+        var li = daftar.children;
+        if (!li.length) return;
+        aktif = (i + li.length) % li.length;
+        Array.prototype.forEach.call(li, function (n, k) { n.classList.toggle('sorot', k === aktif); });
+        input.setAttribute('aria-activedescendant', li[aktif].id);
+        if (li[aktif].scrollIntoView) li[aktif].scrollIntoView({ block: 'nearest' });
+      }
+      function pilih(i) {
+        if (!tampil[i]) return;
+        input.value = tampil[i].value;
+        tutup();
+        sedangPilih = true;                       // event buatan ini tidak boleh membuka ulang daftar
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        sedangPilih = false;
+        input.focus();
+      }
+      input.addEventListener('input', function () { if (!sedangPilih) buka(true); });
+      input.addEventListener('keydown', function (e) {
+        var terbuka = !daftar.hidden;
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (!terbuka) buka(false); sorot(aktif + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (!terbuka) buka(false); sorot(aktif < 0 ? -1 : aktif - 1); }
+        else if (e.key === 'Enter' && terbuka && aktif >= 0) { e.preventDefault(); pilih(aktif); }
+        else if (e.key === 'Escape' && terbuka) { e.preventDefault(); e.stopPropagation(); tutup(); }
+        else if (e.key === 'Tab') tutup();
+      });
+      tombol.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      tombol.addEventListener('click', function () {
+        if (!daftar.hidden) { tutup(); return; }
+        input.focus(); buka(false);
+      });
+      if (o.oninput) input.addEventListener('input', o.oninput);
+      if (o.onchange) input.addEventListener('change', o.onchange);
+      if (!UI._comboGlobal) {
+        UI._comboGlobal = true;
+        document.addEventListener('mousedown', function (e) {
+          if (UI._comboBuka && !(e.target.closest && e.target.closest('.combo.buka'))) UI._comboBuka();
+        });
+      }
+      return el('div.field' + (o.wide ? '.wide' : ''), null, [
+        el('label.lbl', { for: id, text: o.label }),
+        kotak,
+        o.hint ? el('small.hint', { text: o.hint }) : null
+      ]);
+    },
     val: function (form, name) {
       var n = form.elements[name];
       return n ? (n.type === 'checkbox' ? n.checked : n.value.trim()) : '';
@@ -409,14 +502,15 @@
     loading: function (t) { return el('div.loading', { text: t || 'Memuat…' }); },
     badge: function (text, kind) { return el('span.badge' + (kind ? '.' + kind : ''), { text: text }); },
 
-    /* pita kelengkapan 13 dokumen */
+    /* pita kelengkapan dokumen: satu segmen per dokumen; yang tidak berlaku untuk paket ini diarsir.
+       `paket` harus memuat jenis, metode, dan field bersyarat (mis. ada_pph). */
     pita: function (adaMap, paket) {
-      var wrap = el('div.pita', { title: 'Kelengkapan 13 dokumen' });
+      var wrap = el('div.pita', { title: 'Kelengkapan dokumen (' + w.dokJumlah(paket) + ' diperlukan)' });
       C.DOKUMEN.forEach(function (d) {
-        var perlu = !d.bersyarat || (paket && paket[d.bersyarat]);
+        var perlu = w.dokPerlu(d, paket);
         var ada = adaMap[d.kode];
         wrap.appendChild(el('i.seg' + (!perlu ? '.na' : ada ? '.ok' : ''), {
-          title: d.kode + '. ' + d.nama + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
+          title: w.dokNo(d.kode) + '. ' + w.dokNama(d, paket) + (perlu ? (ada ? ' — ada' : ' — belum') : ' — tidak diperlukan')
         }));
       });
       return wrap;

@@ -22,13 +22,22 @@ window.CONFIG = {
 
   JENIS_SATKER: ['MAN', 'MIN', 'MTsN', 'KUA', 'PENDIS', 'SEKJEN'],
 
+  /* rab   : true  = format HPS pemeliharaan (uraian pekerjaan); false = format HPS barang
+     ppn   : false = tanpa PPN (kolom PPN tidak ada, BA Pembayaran tanpa rincian PPN)
+     sumber: isian awal "Sumber dana" (boleh diubah/diketik bebas di tab Data paket)
+     id adalah ID tetap yang tersimpan di data paket — jangan diubah, cukup ubah "nama". */
   JENIS_PENGADAAN: [
-    { id: 'gedung_rm',   nama: 'Pemeliharaan Gedung dan Bangunan (Perkantoran)', rab: true,  sumber: 'DIPA (RM)' },
-    { id: 'gedung_bos',  nama: 'Pemeliharaan Gedung dan Bangunan (BOS)',          rab: true,  sumber: 'DIPA (BOS)' },
-    { id: 'peralatan',   nama: 'Peralatan dan Mesin',                              rab: false, sumber: 'DIPA' },
-    { id: 'ekstra',      nama: 'Ekstrakomptabel',                                  rab: false, sumber: 'DIPA' },
-    { id: 'buku',        nama: 'Buku',                                             rab: false, sumber: 'DIPA (BOS)' }
+    { id: 'gedung_rm',       nama: 'Pemeliharaan Gedung dan Bangunan (Perkantoran)', rab: true,  ppn: true,  sumber: 'DIPA Operasional Perkantoran' },
+    { id: 'gedung_bos',      nama: 'Pemeliharaan Gedung dan Bangunan (BOS)',          rab: true,  ppn: true,  sumber: 'DIPA (BOS)' },
+    { id: 'peralatan',       nama: 'Peralatan dan Mesin',                              rab: false, ppn: true,  sumber: 'DIPA Satker' },
+    { id: 'ekstra',          nama: 'Ekstrakomptabel',                                  rab: false, ppn: true,  sumber: 'DIPA Satker' },
+    { id: 'belanja_lainnya', nama: 'Belanja Lainnya',                                  rab: false, ppn: true,  sumber: 'DIPA Satker' },
+    { id: 'buku',            nama: 'Belanja Lainnya (Buku)',                           rab: false, ppn: false, sumber: 'DIPA (BOS)' }
   ],
+
+  /* opsi combobox "Sumber dana" pada tab Data paket — boleh juga diketik bebas. Teks yang dipilih/diketik
+     dicetak di KAK butir 6 (kata "Satker" + nama satker ditambahkan otomatis bila belum ada). */
+  SUMBER_DANA: ['DIPA (BOS)', 'DIPA Satker', 'DIPA Operasional Perkantoran'],
 
   /* opsi dropdown "Metode pengadaan" pada tab Data paket. Sesuaikan daftar ini bila
      satker Anda memakai istilah/metode lain — pilihan "Lainnya" tetap tersedia otomatis
@@ -40,8 +49,14 @@ window.CONFIG = {
   JENIS_KONTRAK: ['Kontrak Harga Satuan', 'Kontrak Lumsum', 'Kontrak Gabungan Lumsum dan Harga Satuan',
     'Kontrak Putar Kunci (Turnkey)', 'Kontrak Persentase'],
 
-  /* 13 syarat dokumen. generate = template cetak lokal yang tersedia.
-     multi = boleh banyak berkas. bersyarat = hanya wajib bila kondisi terpenuhi. */
+  /* Syarat dokumen. generate = template cetak lokal yang tersedia. multi = boleh banyak berkas.
+     Syarat berlaku-tidaknya sebuah dokumen untuk satu paket (lihat window.dokPerlu):
+       bersyarat  : hanya wajib bila field paket bernilai benar (mis. ada_pph)
+       kecuali    : tidak diperlukan untuk jenis pengadaan yang tercantum
+       hanyaJenis : hanya diperlukan untuk jenis pengadaan yang tercantum
+       hanyaMetode: hanya diperlukan untuk metode pengadaan yang tercantum
+     Khusus dokumen bertahap (subs): subsKecuali menyembunyikan satu tahap pada jenis tertentu,
+     namaUntuk mengganti nama dokumen pada jenis tertentu. */
   DOKUMEN: [
     { kode: 1,  nama: 'SK PPK',                          generate: 'sk_ppk' },
     { kode: 2,  nama: 'SK PP',                            generate: 'sk_pp' },
@@ -49,7 +64,9 @@ window.CONFIG = {
     { kode: 4,  nama: 'KAK, HPS + RAB',                   generate: 'kak_hps' },
     { kode: 5,  nama: 'Surat Pesanan' },
     { kode: 6,  nama: 'Dokumentasi dan surat jalan', multi: true,
-      subs: ['Sebelum pengerjaan', 'Proses pengerjaan', 'Setelah pengerjaan', 'Surat jalan'] },
+      subs: ['Sebelum pengerjaan', 'Proses pengerjaan', 'Setelah pengerjaan', 'Surat jalan'],
+      subsKecuali: { 'Surat jalan': ['gedung_rm', 'gedung_bos'] },            // pemeliharaan gedung tidak memakai surat jalan
+      namaUntuk: { gedung_rm: 'Dokumentasi', gedung_bos: 'Dokumentasi' } },
     { kode: 7,  nama: 'BAST Inaproc', kecuali: ['gedung_rm', 'gedung_bos'] },   // tidak diperlukan pada pemeliharaan gedung
     { kode: 14, nama: 'BA Pemeriksaan Barang',            generate: 'bap' },
     { kode: 8,  nama: 'BAST Manual',                      generate: 'bast' },
@@ -58,16 +75,25 @@ window.CONFIG = {
     { kode: 10, nama: 'SP2D' },
     { kode: 11, nama: 'Faktur dan Bupot', bersyarat: 'ada_pph', multi: true },
     { kode: 12, nama: 'Company profile', dari: 'penyedia' },
-    { kode: 13, nama: 'Hasil monev dan dokumentasi', multi: true, generate: 'monev' }
+    { kode: 13, nama: 'Hasil monev dan dokumentasi', multi: true, generate: 'monev' },
+    /* khusus Pengadaan Langsung — template cetaknya menyusul (tambahkan generate: '...' bila sudah ada) */
+    { kode: 16, nama: 'Uraian pekerjaan singkat', hanyaMetode: ['Pengadaan Langsung'] },
+    { kode: 17, nama: 'SPPBJ',                    hanyaMetode: ['Pengadaan Langsung'] },
+    { kode: 18, nama: 'Nota Dinas',               hanyaMetode: ['Pengadaan Langsung'] },
+    /* khusus pemeliharaan gedung */
+    { kode: 19, nama: 'Siteplan',                 hanyaJenis: ['gedung_rm', 'gedung_bos'] }
   ],
   /* CATATAN: urutan larik = urutan tampil. "kode" adalah ID tetap yang tersimpan di server
      (kolom Dokumen.kode) — jangan diubah untuk dokumen yang sudah punya berkas. Nomor yang
-     tampil di layar dihitung dari posisi larik lewat window.dokNo(). */
+     tampil di layar dihitung dari posisi larik lewat window.dokNo(); memindahkan baris di sini
+     hanya mengubah urutan/nomor tampil, bukan data yang sudah tersimpan. */
 
   GENERATOR: [
-    { id: 'kak_hps', nama: 'KAK, HPS & RAB (gabungan)',  field: 'no_kak',    kode: 4 },
-    { id: 'kak',    nama: 'KAK / Spesifikasi Teknis', field: 'no_kak',    kode: 4 },
-    { id: 'hps',    nama: 'HPS dan RAB',              field: 'no_hps',    kode: 4 },
+    /* KAK dan HPS tidak memakai nomor surat (tanpaNomor): hanya tanggalnya yang diisi di tab Data paket.
+       Field no_* di sini tinggal untuk menurunkan kunci tgl_kak / tgl_hps. */
+    { id: 'kak_hps', nama: 'KAK, HPS & RAB (gabungan)',  field: 'no_kak',    kode: 4, tanpaNomor: true },
+    { id: 'kak',    nama: 'KAK / Spesifikasi Teknis', field: 'no_kak',    kode: 4, tanpaNomor: true },
+    { id: 'hps',    nama: 'HPS dan RAB',              field: 'no_hps',    kode: 4, tanpaNomor: true },
     { id: 'sk_ppk', nama: 'SK PPK',                   field: 'no_sk_ppk', kode: 1 },
     { id: 'sk_pp',  nama: 'SK PP',                    field: 'no_sk_pp',  kode: 2 },
     { id: 'bast',   nama: 'BAST Manual',              field: 'no_bast',   kode: 8 },
@@ -78,12 +104,40 @@ window.CONFIG = {
 };
 
 /* Apakah dokumen d diperlukan untuk paket ini? Dipakai pita, tab Berkas, dan hitungan kelengkapan.
-   - bersyarat: hanya bila field paket bernilai benar (mis. ada_pph)
-   - kecuali  : tidak diperlukan untuk jenis pengadaan yang tercantum */
+   Objek paket harus memuat jenis, metode, dan field bersyarat (mis. ada_pph).
+   - bersyarat  : hanya bila field paket bernilai benar (mis. ada_pph)
+   - kecuali    : tidak diperlukan untuk jenis pengadaan yang tercantum
+   - hanyaJenis : hanya diperlukan untuk jenis pengadaan yang tercantum
+   - hanyaMetode: hanya diperlukan untuk metode pengadaan yang tercantum (huruf besar/kecil diabaikan) */
 window.dokPerlu = function (d, paket) {
   if (d.kecuali && paket && d.kecuali.indexOf(paket.jenis) >= 0) return false;
+  if (d.hanyaJenis && !(paket && d.hanyaJenis.indexOf(paket.jenis) >= 0)) return false;
+  if (d.hanyaMetode) {
+    var m = String(paket && paket.metode || '').trim().toLowerCase();
+    if (!d.hanyaMetode.some(function (x) { return String(x).toLowerCase() === m; })) return false;
+  }
   if (d.bersyarat && !(paket && paket[d.bersyarat])) return false;
   return true;
+};
+/* nama dokumen yang ditampilkan untuk paket ini (mis. "Dokumentasi" tanpa "surat jalan" pada pemeliharaan gedung) */
+window.dokNama = function (d, paket) {
+  var u = d.namaUntuk;
+  return (u && paket && u[paket.jenis]) || d.nama;
+};
+/* pilihan tahap/bagian untuk paket ini; null bila dokumen tidak bertahap */
+window.dokSubs = function (d, paket) {
+  if (!d.subs) return null;
+  var k = d.subsKecuali || {};
+  return d.subs.filter(function (s) { return !(k[s] && paket && k[s].indexOf(paket.jenis) >= 0); });
+};
+/* berapa dokumen yang diperlukan untuk paket ini */
+window.dokJumlah = function (paket) {
+  return window.CONFIG.DOKUMEN.filter(function (d) { return window.dokPerlu(d, paket); }).length;
+};
+/* apakah jenis pengadaan ini dikenai PPN (JENIS_PENGADAAN[].ppn; baku: ya) */
+window.jenisKenaPpn = function (id) {
+  var j = window.CONFIG.JENIS_PENGADAAN.filter(function (x) { return x.id === id; })[0];
+  return !(j && j.ppn === false);
 };
 /* nomor tampil (1..n) = posisi dokumen dalam daftar, bukan nilai kode */
 window.dokNo = function (kode) {

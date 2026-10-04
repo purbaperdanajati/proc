@@ -145,6 +145,24 @@ button.icon { background: none; border: 0; font-size: 20px; line-height: 1; curs
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .field.wide { grid-column: 1 / -1; }
 
+/* combobox (UI.combo): isian bebas + tombol ▾ + daftar pilihan */
+.combo { position: relative; }
+.combo input { padding-right: 34px; }
+.combo-btn {
+  position: absolute; top: 1px; right: 1px; bottom: 1px; width: 30px; border: 0; background: transparent;
+  color: var(--tinta2); font-size: 13px; cursor: pointer; border-radius: 0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0;
+}
+.combo-btn:hover { background: var(--garis2); color: var(--tinta); }
+.combo-daftar {
+  position: absolute; left: 0; right: 0; top: calc(100% + 3px); z-index: 30; margin: 0; padding: 4px; list-style: none;
+  background: var(--putih); border: 1px solid var(--garis); border-radius: var(--r);
+  box-shadow: 0 8px 22px rgba(9, 28, 18, .16); max-height: 232px; overflow-y: auto;
+}
+.combo-daftar[hidden] { display: none; }
+.combo-daftar li { padding: 7px 9px; border-radius: 4px; font-size: 14px; cursor: pointer; }
+.combo-daftar li:hover, .combo-daftar li.sorot { background: var(--hijau-muda); }
+.combo-daftar li.dipilih { font-weight: 620; color: var(--hijau-tua); }
+
 .badge {
   display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
   background: var(--garis2); color: var(--tinta2); border: 1px solid var(--garis);
@@ -170,10 +188,10 @@ button.icon { background: none; border: 0; font-size: 20px; line-height: 1; curs
 
 /* pita kelengkapan: elemen penanda utama aplikasi */
 .pita { display: inline-flex; gap: 2px; align-items: center; }
-.pita .seg { width: 9px; height: 17px; background: #e3e8e3; border-radius: 1px; display: block; }
+.pita .seg { width: 7px; height: 17px; background: #e3e8e3; border-radius: 1px; display: block; }   /* 7px: 19 segmen tetap muat di kolom 170px */
 .pita .seg.ok { background: var(--hijau); }
 .pita .seg.na { background: repeating-linear-gradient(45deg, #eceeec, #eceeec 2px, #e0e4e0 2px, #e0e4e0 4px); }
-.pita.besar .seg { width: 14px; height: 26px; }
+.pita.besar .seg { width: 11px; height: 26px; }
 
 .meter { height: 6px; background: var(--garis2); border-radius: 4px; overflow: hidden; min-width: 90px; }
 .meter i { display: block; height: 100%; background: var(--hijau); }
@@ -297,6 +315,8 @@ table.kisi td[data-t="num"], table.kisi td[data-t="rp"] { text-align: right; fon
 table.kisi td:focus { outline: 2px solid var(--hijau); outline-offset: -2px; }
 .hps-total { display: flex; gap: 22px; padding: 12px 2px; flex-wrap: wrap; font-size: 14px; }
 .hps-total b { font-size: 17px; }
+.hps-saran { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 12px; margin: 0 0 10px; background: #fff8e6; border: 1px solid #f0dcaa; border-radius: var(--r); font-size: 13px; color: var(--tinta); }
+.hps-saran[hidden] { display: none; }
 
 /* indikator proses pada tombol simpan */
 .spin {

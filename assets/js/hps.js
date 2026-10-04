@@ -10,7 +10,8 @@
     { k: 'volume', label: 'Volume' },
     { k: 'satuan', label: 'Satuan' },
     { k: 'harga', label: 'Harga satuan' },
-    { k: 'hps', label: 'HPS (harga + PPN)' },
+    { k: 'ppn', label: 'PPN (nominal per baris)' },
+    { k: 'hps', label: 'HPS (harga satuan + PPN)' },
     { k: 'jumlah', label: 'Jumlah' }
   ];
 
@@ -29,32 +30,48 @@
     return m;
   }
 
-  /* Dua format baku sesuai contoh dokumen: pemeliharaan gedung memakai
-     URAIAN PEKERJAAN + SATUAN; peralatan/buku/ekstrakomptabel memakai
-     NAMA + SPESIFIKASI tanpa kolom satuan. */
-  function templateGedung() {
-    var m = kosong(4, 6);
-    var h = ['NO.', 'URAIAN PEKERJAAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN (Rp)', 'TOTAL (Rp)'];
+  /* Dua format baku, masing-masing dengan atau tanpa PPN (denganPpn, baku: ya):
+       gedung : NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN · [PPN] · TOTAL
+       barang : NO. · NAMA · SPESIFIKASI · VOLUME · SATUAN · HARGA SATUAN · [PPN] · TOTAL
+     Kolom PPN berisi nominal PPN per baris (volume x harga x PPN%); TOTAL = volume x harga + PPN.
+     Tanpa PPN (mis. buku) kolom PPN tidak ada dan persentase PPN dikunci 0. */
+  function templateGedung(denganPpn) {
+    var ppn = denganPpn !== false;
+    var h = ['NO.', 'URAIAN PEKERJAAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN (Rp)'].concat(ppn ? ['PPN (Rp)'] : []).concat(['TOTAL (Rp)']);
+    var m = kosong(4, h.length);
     m.rows[0] = h.map(function (t) { return sel(t, { b: true }); });
     m.header = 0;
-    m.map = { no: 0, uraian: 1, volume: 2, satuan: 3, harga: 4, jumlah: 5 };
-    m.tipe = 'gedung';
+    m.map = ppn ? { no: 0, uraian: 1, volume: 2, satuan: 3, harga: 4, ppn: 5, jumlah: 6 }
+                : { no: 0, uraian: 1, volume: 2, satuan: 3, harga: 4, jumlah: 5 };
+    m.ppn = ppn ? 11 : 0;
+    m.tipe = ppn ? 'gedung' : 'gedung_tanpa_ppn';
     return m;
   }
-  function templateBarang() {
-    var m = kosong(4, 7);
-    var h = ['NO.', 'NAMA', 'SPESIFIKASI', 'VOL', 'SATUAN', 'HARGA SATUAN', 'JUMLAH'];
+  function templateBarang(denganPpn) {
+    var ppn = denganPpn !== false;
+    var h = ['NO.', 'NAMA', 'SPESIFIKASI', 'VOLUME', 'SATUAN', 'HARGA SATUAN (Rp)'].concat(ppn ? ['PPN (Rp)'] : []).concat(['TOTAL (Rp)']);
+    var m = kosong(4, h.length);
     m.rows[0] = h.map(function (t) { return sel(t, { b: true }); });
     m.header = 0;
-    m.map = { no: 0, uraian: 1, volume: 3, satuan: 4, harga: 5, jumlah: 6 };
-    m.tipe = 'barang';
+    m.map = ppn ? { no: 0, uraian: 1, volume: 3, satuan: 4, harga: 5, ppn: 6, jumlah: 7 }
+                : { no: 0, uraian: 1, volume: 3, satuan: 4, harga: 5, jumlah: 6 };
+    m.ppn = ppn ? 11 : 0;
+    m.tipe = ppn ? 'barang' : 'barang_tanpa_ppn';
     return m;
   }
-  /* jenis: id dari CONFIG.JENIS_PENGADAAN. Jenis dengan RAB (pemeliharaan gedung)
-     memakai templat gedung; sisanya (peralatan, buku, ekstrakomptabel) memakai templat barang. */
+  /* apakah jenis pengadaan ini dikenai PPN (CONFIG.JENIS_PENGADAAN[].ppn; baku: ya) */
+  function kenaPpn(jenis) {
+    var j = (w.CONFIG.JENIS_PENGADAAN || []).filter(function (x) { return x.id === jenis; })[0];
+    return !(j && j.ppn === false) && !/_tanpa_ppn$/.test(String(jenis || ''));
+  }
+  /* jenis: id dari CONFIG.JENIS_PENGADAAN (atau tipe templat: 'gedung', 'barang', '..._tanpa_ppn').
+     Jenis dengan RAB (pemeliharaan gedung) memakai templat gedung; sisanya (peralatan dan mesin,
+     ekstrakomptabel, belanja lainnya, buku) memakai templat barang. Jenis ber-ppn:false (buku) tanpa kolom PPN. */
   function contoh(jenis) {
     var j = (w.CONFIG.JENIS_PENGADAAN || []).filter(function (x) { return x.id === jenis; })[0];
-    return (j && j.rab === false) ? templateBarang() : templateGedung();
+    var ppn = kenaPpn(jenis);
+    if (j) return j.rab === false ? templateBarang(ppn) : templateGedung(ppn);
+    return /^barang/.test(String(jenis || '')) ? templateBarang(ppn) : templateGedung(ppn);
   }
 
   /* ---------- pembacaan tempelan ---------- */
@@ -152,6 +169,7 @@
       else if (/satuan$|sat\b/.test(t) && peta.satuan == null) peta.satuan = c;
       else if (/harga satuan|harga\b/.test(t) && peta.harga == null) peta.harga = c;
       else if (/^hps|hps\b/.test(t) && peta.hps == null) peta.hps = c;
+      else if (/\bppn\b|pajak/.test(t) && peta.ppn == null) peta.ppn = c;
       else if (/jumlah|total/.test(t) && peta.jumlah == null) peta.jumlah = c;
     });
     if (peta.uraian == null && m.cols > 1) peta.uraian = 1;
@@ -166,14 +184,23 @@
       if (r <= m.header) return;
       var vol = map.volume != null && baris[map.volume] ? angka(baris[map.volume].v) : null;
       var hrg = map.harga != null && baris[map.harga] ? angka(baris[map.harga].v) : null;
+      /* Dua cara memasukkan PPN: (a) kolom PPN terpisah (map.ppn) — nominal PPN baris = volume x harga x PPN%,
+         jumlah = volume x harga + PPN; (b) kolom HPS (map.hps) berisi harga satuan + PPN. Bila keduanya
+         dipetakan, yang dipakai kolom PPN supaya PPN tidak terhitung dua kali. */
+      var ppnSel = map.ppn != null && baris[map.ppn] ? baris[map.ppn] : null;
       var hps = null;
-      if (map.hps != null && baris[map.hps]) {
+      if (!ppnSel && map.hps != null && baris[map.hps]) {
         if (hrg !== null) { hps = Math.round(hrg * (1 + (Number(m.ppn) || 0) / 100)); baris[map.hps].v = String(hps); baris[map.hps].t = 'rp'; }
         else hps = angka(baris[map.hps].v);
       }
       var satuanNilai = hps !== null ? hps : hrg;
       if (map.jumlah != null && baris[map.jumlah] && vol !== null && satuanNilai !== null) {
         var j = Math.round(vol * satuanNilai);
+        if (ppnSel) {
+          var pp = Math.round(j * (Number(m.ppn) || 0) / 100);
+          ppnSel.v = String(pp); ppnSel.t = 'rp';
+          j += pp;
+        }
         baris[map.jumlah].v = String(j);
         baris[map.jumlah].t = 'rp';
       }
@@ -263,7 +290,7 @@
     opt = opt || {};
     var buang = {};
     if (opt.tanpaHarga) {
-      ['harga', 'hps', 'jumlah'].forEach(function (k) { if (m.map && m.map[k] != null) buang[m.map[k]] = 1; });
+      ['harga', 'ppn', 'hps', 'jumlah'].forEach(function (k) { if (m.map && m.map[k] != null) buang[m.map[k]] = 1; });
     }
     var kolomPakai = [];
     for (var c = 0; c < m.cols; c++) if (!buang[c]) kolomPakai.push(c);
@@ -288,13 +315,17 @@
         var lebar = 0;
         for (var k = 0; k < s.cs; k++) if (!buang[cc + k]) lebar++;
         if (!lebar) continue;
-        var teks = s.v;
-        if (s.t === 'rp' || (s.t === 'num' && (cc === m.map.harga || cc === m.map.hps || cc === m.map.jumlah))) {
-          var n = angka(teks); if (n !== null) teks = Fmt.num(n, 0);
+        var teks = s.v, kanan = s.t === 'num' || s.t === 'rp';
+        /* kolom nominal (harga satuan, PPN, HPS, total): angka diformat ribuan dan rata kanan walau
+           diketik manual (sel hasil tempelan/hitungan sudah bertipe num/rp). Judul dan sel gabung dilewati. */
+        var nominal = (cc === m.map.harga || cc === m.map.ppn || cc === m.map.hps || cc === m.map.jumlah) && r > hMulai && s.cs === 1;
+        if (s.t === 'rp' || nominal) {
+          var n = angka(teks);
+          if (n !== null) { teks = Fmt.num(n, n % 1 ? 2 : 0); kanan = true; }
         }
         if (teks !== '') adaIsi = true;
         isi += '<td' + (s.rs > 1 ? ' rowspan="' + s.rs + '"' : '') + (lebar > 1 ? ' colspan="' + lebar + '"' : '') +
-          ' class="' + (s.b ? 'tb ' : '') + (s.t === 'num' || s.t === 'rp' ? 'kanan' : '') + '">' +
+          ' class="' + (s.b ? 'tb ' : '') + (kanan ? 'kanan' : '') + '">' +
           esc(teks).replace(/\n/g, '<br>') + '</td>';
       }
       if (isi) {
@@ -364,6 +395,8 @@
   /* ---------- editor ---------- */
   function editor(host, model, onChange, jenisHint, pagu) {
     var m = model && model.rows && model.rows.length ? model : contoh(jenisHint);
+    var denganPpn = kenaPpn(jenisHint);          // jenis tanpa PPN (mis. buku): PPN dikunci 0, tanpa kolom/peran PPN
+    if (!denganPpn) m.ppn = 0;
     if (pagu != null) m.pagu = Number(pagu) || 0;
     /* migrasi: versi lama menyimpan bulatMode sebagai kelipatan langsung (100/1000/10000) */
     if (Number(m.bulatMode) >= 100) {
@@ -372,8 +405,46 @@
     }
     var pilihan = null, jangkar = null;
     var alat = el('div.hps-alat'), bungkus = el('div.hps-wrap'), ringkas = el('div.hps-total');
+    var saran = el('div.hps-saran', { hidden: true });
 
     function ubah() { if (onChange) onChange(m); }
+
+    /* Rincian lama (dibuat sebelum ada kolom PPN) tidak diubah otomatis. Untuk jenis yang dikenai PPN,
+       editor menawarkan "Tambah kolom PPN": kolom disisipkan tepat sebelum kolom total TANPA menghapus isian.
+       Sel gabung yang melintasi garis sisip ikut diperlebar; bila ada gabungan baris+kolom yang melintas,
+       tawaran ditiadakan (gunakan "Format baku"). */
+    function bisaTambahPpn() {
+      if (!denganPpn || !m.map || m.map.jumlah == null || m.map.ppn != null || m.map.hps != null) return false;
+      var idx = m.map.jumlah;
+      for (var r = 0; r < m.rows.length; r++) {
+        for (var c = 0; c < idx; c++) {
+          var s0 = m.rows[r][c];
+          if (s0 && c + (s0.cs || 1) > idx && (s0.rs || 1) > 1) return false;
+        }
+      }
+      return true;
+    }
+    function tambahKolomPpn() {
+      var idx = m.map.jumlah;
+      m.rows.forEach(function (baris, r) {
+        var lintas = null;
+        for (var c = 0; c < idx; c++) { var s1 = baris[c]; if (s1 && c + (s1.cs || 1) > idx) { lintas = s1; break; } }
+        if (lintas) { lintas.cs = (lintas.cs || 1) + 1; baris.splice(idx, 0, null); }
+        else baris.splice(idx, 0, sel(r === m.header ? 'PPN (Rp)' : '', { b: r === m.header }));
+      });
+      for (var k in m.map) if (m.map[k] >= idx) m.map[k]++;
+      m.map.ppn = idx;
+      m.cols++;
+      gambar(); ubah();
+      UI.toast('Kolom PPN ditambahkan. Tekan Hitung untuk mengisi PPN dan total yang baru.', 'ok');
+    }
+    function segarkanSaran() {
+      clear(saran);
+      saran.hidden = !bisaTambahPpn();
+      if (saran.hidden) return;
+      saran.appendChild(el('span', { text: 'Rincian ini belum memiliki kolom PPN (volume · satuan · harga satuan · PPN · total).' }));
+      saran.appendChild(el('button.btn.kecil', { type: 'button', onclick: tambahKolomPpn }, 'Tambah kolom PPN'));
+    }
 
     function normalkan() {
       m.cols = Math.max.apply(null, m.rows.map(function (b) { return b.length; }).concat([1]));
@@ -413,6 +484,7 @@
       tb.appendChild(frag); tabel.appendChild(tb);
       clear(bungkus).appendChild(tabel);
       hitungRingkas();
+      segarkanSaran();
     }
 
     function hitungRingkas() {
@@ -548,53 +620,56 @@
       gambar(); ubah();
     }));
     alat.appendChild(tombol('Format baku', 'Mulai dari susunan kolom standar', function () {
+      /* varian PPN mengikuti jenis pengadaan paket ini: jenis tanpa PPN (buku) hanya ditawari format tanpa PPN */
+      var ket = denganPpn ? ' · PPN (Rp) · TOTAL (Rp)' : ' · TOTAL (Rp)';
       UI.modal({
         title: 'Pilih format kolom standar',
         body: el('div.rapi', null, [
           el('p.mini', { text: 'Kolom yang ada saat ini akan diganti dengan salah satu susunan baku berikut. Isian yang sudah diketik akan hilang.' }),
           el('div.dok-item', null, [el('div', null, [
-            el('div.dok-nama', { text: 'Pemeliharaan gedung' }),
-            el('div.dok-file', null, [el('span.diam', { text: 'NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN (Rp) · TOTAL (Rp)' })])
+            el('div.dok-nama', { text: 'Pemeliharaan gedung' + (denganPpn ? '' : ' (tanpa PPN)') }),
+            el('div.dok-file', null, [el('span.diam', { text: 'NO. · URAIAN PEKERJAAN · VOLUME · SATUAN · HARGA SATUAN (Rp)' + ket })])
           ])]),
           el('div.dok-item', null, [el('div', null, [
-            el('div.dok-nama', { text: 'Peralatan, buku, ekstrakomptabel' }),
-            el('div.dok-file', null, [el('span.diam', { text: 'NO. · NAMA · SPESIFIKASI · VOL · HARGA SATUAN · JUMLAH' })])
+            el('div.dok-nama', { text: (denganPpn ? 'Peralatan dan mesin, ekstrakomptabel, belanja lainnya' : 'Belanja lainnya (buku) — tanpa PPN') }),
+            el('div.dok-file', null, [el('span.diam', { text: 'NO. · NAMA · SPESIFIKASI · VOLUME · SATUAN · HARGA SATUAN (Rp)' + ket })])
           ])])
         ]),
         actions: [
           { label: 'Batal' },
-          { label: 'Pakai format gedung', onclick: function () { m = templateGedung(); gambar(); ubah(); } },
-          { label: 'Pakai format barang', kind: 'primary', onclick: function () { m = templateBarang(); gambar(); ubah(); } }
+          { label: 'Pakai format gedung', onclick: function () { m = templateGedung(denganPpn); m.pagu = Number(pagu) || m.pagu; gambar(); ubah(); } },
+          { label: 'Pakai format barang', kind: 'primary', onclick: function () { m = templateBarang(denganPpn); m.pagu = Number(pagu) || m.pagu; gambar(); ubah(); } }
         ]
       });
     }));
     alat.appendChild(tombol('Peran kolom', 'Tentukan kolom volume, harga, dan jumlah', function () {
       var form = el('div.grid2');
-      KOLOM_PERAN.forEach(function (p) {
+      var peran = KOLOM_PERAN.filter(function (p) { return denganPpn || (p.k !== 'ppn' && p.k !== 'hps'); });
+      peran.forEach(function (p) {
         var opsi = [{ value: '', label: '— tidak ada —' }];
         for (var c = 0; c < m.cols; c++) opsi.push({ value: String(c), label: 'Kolom ' + String.fromCharCode(65 + c) + ((m.rows[m.header] && m.rows[m.header][c] && m.rows[m.header][c].v) ? ' — ' + m.rows[m.header][c].v : '') });
         form.appendChild(UI.field({ label: p.label, name: p.k, type: 'select', value: m.map[p.k] == null ? '' : String(m.map[p.k]), options: opsi }));
       });
       form.appendChild(UI.field({ label: 'Baris judul tabel (nomor baris)', name: 'header', type: 'number', value: m.header + 1, min: 1 }));
-      form.appendChild(UI.field({ label: 'PPN (%)', name: 'ppn', type: 'number', value: m.ppn, step: '0.01', hint: 'Dipakai untuk mengisi kolom HPS dari harga satuan.' }));
+      if (denganPpn) form.appendChild(UI.field({ label: 'PPN (%)', name: 'ppn', type: 'number', value: m.ppn, step: '0.01', hint: 'Dipakai saat tombol Hitung mengisi kolom PPN (atau kolom HPS = harga satuan + PPN).' }));
       UI.modal({
         title: 'Peran kolom dan hitungan', body: form,
         actions: [{ label: 'Batal' }, {
           label: 'Simpan peran', kind: 'primary', onclick: function () {
             var map = {};
-            KOLOM_PERAN.forEach(function (p) {
+            peran.forEach(function (p) {
               var v = form.querySelector('[name="' + p.k + '"]').value;
               if (v !== '') map[p.k] = Number(v);
             });
             m.map = map;
             m.header = Math.max(0, Number(form.querySelector('[name="header"]').value || 1) - 1);
-            m.ppn = Number(form.querySelector('[name="ppn"]').value || 0);
+            m.ppn = denganPpn ? Number(form.querySelector('[name="ppn"]').value || 0) : 0;
             gambar(); ubah();
           }
         }]
       });
     }));
-    alat.appendChild(tombol('Hitung', 'Isi kolom HPS dan jumlah lalu totalkan', function () {
+    alat.appendChild(tombol('Hitung', 'Isi kolom PPN, HPS, dan total lalu jumlahkan', function () {
       if (m.map.jumlah == null) return UI.toast('Tentukan peran kolom lebih dulu', 'bad');
       hitung(m); gambar(); ubah();
       UI.toast('Total: ' + Fmt.rp(m.total) + ' · HPS akhir: ' + Fmt.rp(totalAkhir(m)), 'ok');
@@ -678,6 +753,7 @@
     clear(host);
     host.appendChild(alat);
     host.appendChild(el('p.mini', null, 'Klik satu sel lalu tekan Ctrl+V untuk menempel langsung dari Excel — kolom, baris, dan sel gabung ikut tersalin. Klik lalu Shift+klik untuk memilih rentang.'));
+    host.appendChild(saran);
     host.appendChild(bungkus);
     host.appendChild(ringkas);
     gambar();
@@ -690,7 +766,7 @@
   }
 
   w.HPS = {
-    kosong: kosong, contoh: contoh, editor: editor, hitung: hitung, total: totalSaja,
+    kosong: kosong, contoh: contoh, kenaPpn: kenaPpn, editor: editor, hitung: hitung, total: totalSaja,
     totalAkhir: totalAkhir, hitungPembulatan: hitungPembulatan,
     tabelDokumen: tabelDokumen, daftarItem: daftarItem, dariHTML: dariHTML, dariTSV: dariTSV, angka: angka
   };
