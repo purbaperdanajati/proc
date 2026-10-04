@@ -145,7 +145,7 @@ tab **Berkas (n)** serta ringkasan paket mengikuti jenis & metode pengadaan pake
 | Dokumentasi dan surat jalan (tahap: sebelum / proses / setelah / surat jalan; multi-berkas) | semua paket. Pada **pemeliharaan gedung** menjadi "Dokumentasi" dan tahap *Surat jalan* tidak ditawarkan |
 | BAST Inaproc | semua jenis **kecuali** pemeliharaan gedung (RM maupun BOS) |
 | Faktur dan Bupot | hanya bila paket ditandai *Ada PPh* |
-| Uraian pekerjaan singkat · SPPBJ · Nota Dinas | hanya metode **Pengadaan Langsung** (sementara diunggah manual; template cetaknya menyusul) |
+| Uraian pekerjaan singkat · SPPBJ · Nota Dinas | hanya metode **Pengadaan Langsung** (bisa dibuat otomatis lewat tombol **Buat**, atau diunggah manual) |
 | Siteplan | hanya **pemeliharaan gedung** (Perkantoran / BOS) |
 
 Urutan tampil = urutan larik `DOKUMEN` di `config.js`. Nomor di layar dihitung dari posisi (`dokNo()`), sedangkan
@@ -158,12 +158,25 @@ kelengkapan. `subsKecuali` dan `namaUntuk` menyesuaikan tahap & nama dokumen per
 Dokumentasi). Untuk menambah generator cetak pada dokumen baru, cukup isi properti `generate` dan tambahkan
 templatnya di `docgen.js`.
 
-### 8 dokumen yang bisa dibuat otomatis (tab Data paket)
-KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev, BA Pemeriksaan Barang, BA Pembayaran — masing-masing punya field
+### 11 dokumen yang bisa dibuat otomatis (tab Data paket)
+KAK/Spesifikasi Teknis, HPS, SK PPK, SK PP, BAST Manual, Laporan Monev, BA Pemeriksaan Barang, BA Pembayaran, serta tiga dokumen
+khusus Pengadaan Langsung — Uraian Singkat Pekerjaan, SPPBJ, Nota Dinas — masing-masing punya field
 nomor dan tanggal surat sendiri di tab **Data paket** (khusus **KAK dan HPS hanya tanggal**: dokumen ini tidak memakai
 nomor surat, jadi barisnya tidak dicetak), tepat di sebelahnya ada tombol **Pratinjau**
 (simpan perubahan dulu bila nomor/tanggal baru saja diubah, agar dokumen memuat nilai terbaru).
 Kop surat, nama KPA/PPK/PP, SP DIPA, dan pagu terisi otomatis dari data Satker, Penugasan, dan Paket.
+
+**Dokumen Pengadaan Langsung** (templat mengikuti contoh surat Kankemenag Indramayu). Barisnya di tab **Data paket**
+baru tampil bila *Metode pengadaan* = Pengadaan Langsung. Data yang dipakai:
+
+| Dokumen | Isian di tab Data paket | Diambil dari |
+|---|---|---|
+| Uraian Singkat Pekerjaan | *Kode RUP* (di bagian Data paket) | nama paket, lokasi, pagu, total HPS, PPK, satker; frasa jenis pekerjaan dari `JENIS_PENGADAAN[].uraian` di `config.js` |
+| SPPBJ | Nomor, Tanggal, *Tanggal penawaran penyedia* | penyedia, nama paket, **Nilai kontrak** (hasil negosiasi; bila kosong dipakai total HPS) beserta terbilangnya, PPK, satker |
+| Nota Dinas | Nomor, Tanggal, *Kode RUP* | Pejabat Pengadaan (Yth), PPK (Dari), nama paket, lokasi, pagu, total HPS, satker |
+
+*Kode RUP* dan *Tanggal penawaran* disimpan di kolom `meta` paket (tidak mengubah struktur sheet). Redaksi surat disalin dari contoh;
+kalimat "mekanisme e Pengadaan Langsung" pada Nota Dinas dapat diubah lewat konstanta `MEKANISME_PL` di `docgen.js`.
 
 **Seluruh dokumen dirakit di peramban pengguna** (`docgen.js`) — server Apps Script tidak pernah
 menyusun dokumen, hanya menyimpan data dan berkas. Klik **Pratinjau** membuka jendela pop-up berisi

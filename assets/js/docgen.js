@@ -57,6 +57,7 @@
   h1.judul.garis { text-decoration:underline; }
   .nomor { text-align:center; font-size:11pt; margin:0 0 14px; }
   p { margin:0 0 8px; text-align:justify; }
+  p.indent { text-indent:1.25cm; }
   .tengah { text-align:center; }
   .kanan { text-align:right; }
   table.doc-tabel { width:100%; border-collapse:collapse; font-size:9.5pt; margin:8px 0; }
@@ -164,6 +165,9 @@
     var alamat = [s.alamat, s.desa, s.kecamatan].filter(Boolean).join(', ');
     var baris2 = [alamat, s.kode_pos ? 'Kode Pos ' + s.kode_pos : ''].filter(Boolean).join(' ');
     var baris3 = [s.telp ? 'Telp/Fax. ' + s.telp : '', s.email ? 'e-mail : ' + s.email : '', s.website || ''].filter(Boolean).join('  ');
+    /* satker = kantor kementerian itu sendiri (nama sama dengan INSTANSI): jangan cetak baris nama dua kali */
+    var norm = function (t) { return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); };
+    var namaSama = !!norm(s.nama) && norm(s.nama) === norm(w.CONFIG.INSTANSI);
     var L = logoCache && logoCache.src ? logoCache : null;
     var sel = Math.max(2.4, logoCm() + 0.1);          // lebar sel logo (kiri = kanan supaya teks tetap di tengah)
     var selAttr = ' width="' + Math.round(sel * PX_CM) + '" style="width:' + sel.toFixed(2) + 'cm"';
@@ -176,7 +180,7 @@
       <td class="kop-tengah">
         <div class="t1">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
         <div class="t2">${E(w.CONFIG.INSTANSI).toUpperCase()}</div>
-        <div class="t3">${E(s.nama || '')}</div>
+        ${namaSama ? '' : '<div class="t3">' + E(s.nama || '') + '</div>'}
         <div class="t4">${E(baris2)}</div>
         <div class="t4">${E(baris3)}</div>
       </td>
@@ -609,6 +613,115 @@
       ${ttd(null, { kota: c.kota || 'Indramayu', tanggal: tglPanjang(c.tanggal), jabatan: 'Pejabat Pembuat Komitmen', nama: c.ppk && c.ppk.nama, nip: c.ppk && c.ppk.nip })}
       ${lamp}`;
     return { judul: 'Monev - ' + (pk.nama || ''), html: kop(s) + body };
+  };
+
+  /* ====================================================================
+     Dokumen khusus Pengadaan Langsung — mengikuti contoh surat resmi Kankemenag Indramayu:
+     Uraian Singkat Pekerjaan, SPPBJ, dan Nota Dinas.
+     Data yang dipakai: nama paket, lokasi, pagu, nilai kontrak, total HPS, penyedia, PPK, Pejabat
+     Pengadaan, satker (dari tab Data paket / Penugasan) ditambah isian tab Data paket:
+       - Kode RUP                 (meta.kode_rup)       -> Nota Dinas, Uraian Singkat
+       - Tanggal penawaran penyedia (meta.tgl_penawaran) -> SPPBJ
+       - nomor & tanggal SPPBJ dan Nota Dinas (no_sppbj/tgl_sppbj, no_notadinas/tgl_notadinas)
+     Frasa jenis pekerjaan pada Uraian Singkat diambil dari JENIS_PENGADAAN[].uraian (config.js).
+     ==================================================================== */
+
+  /* redaksi mekanisme pengadaan persis seperti contoh Nota Dinas (ubah di sini bila perlu) */
+  var MEKANISME_PL = 'e Pengadaan Langsung';
+
+  /* tabel "label : isi" tanpa garis */
+  function tabelLabel(baris, lebarCm) {
+    return '<table class="tata" style="margin:0 0 6px">' + baris.map(function (b) {
+      return '<tr><td style="width:' + (lebarCm || 3.4) + 'cm">' + b[0] + '</td><td style="width:.5cm">:</td><td>' + b[1] + '</td></tr>';
+    }).join('') + '</table>';
+  }
+  /* rincian paket yang sama di Nota Dinas dan Uraian Singkat */
+  function rincianPaket(c, labelNama) {
+    var pk = c.paket || {}, m = pk.meta || {};
+    var hps = c.hps && c.hps.rows ? HPS.totalAkhir(c.hps) : 0;
+    return tabelLabel([
+      [labelNama, E(pk.nama || '')],
+      ['Kode RUP', E(m.kode_rup || '..........')],
+      ['Lokasi Kegiatan', E(pk.lokasi || '')],
+      ['Pagu Anggaran', pk.pagu ? E(rpKoma(pk.pagu)) : 'Rp. ..........'],
+      ['HPS', hps ? E(rpKoma(hps)) : 'Rp. ..........']
+    ], 3.6);
+  }
+  /* garis pemisah selebar halaman: sel tabel ber-garis bawah (lebih tahan di Word daripada <hr>/div kosong) */
+  function garisPisah() {
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:6px 0 16px">' +
+      '<tr><td style="border-bottom:1px solid #000;height:3px;font-size:1pt;line-height:1pt">&nbsp;</td></tr></table>';
+  }
+  /* blok tanda tangan surat dinas: kiri/kanan, nama tanpa garis bawah, NIP opsional */
+  function ttdSurat(o) {
+    var isi = (o.atas ? E(o.atas) + '<br>' : '') + E(o.jabatan || '') + (o.koma ? ',' : '') +
+      '<div style="margin-top:72px">' + (o.tebal ? '<b>' + E(o.nama || '..................') + '</b>' : E(o.nama || '..................')) + '</div>' +
+      (o.nip ? 'NIP : ' + E(o.nip) : '');
+    return '<table class="ttd" style="margin-top:20px"><tr>' +
+      (o.kanan ? '<td style="width:55%"></td>' : '') + '<td>' + isi + '</td></tr></table>';
+  }
+
+  T.uraian = function (c) {
+    var s = c.satker || {}, pk = c.paket || {}, ppk = c.ppk || {};
+    var nama = E(pk.nama || '..........');
+    var pekerjaan = E((c.jenis && c.jenis.uraian) || 'pengadaan barang/jasa pendukung pelayanan');
+    var body = `
+      <h1 class="judul" style="margin:28px 0 16px">Uraian Singkat Pekerjaan</h1>
+      ${rincianPaket(c, 'Nama Paket')}
+      <p style="margin:16px 0 8px;text-align:left">Uraian Singkat Pekerjaan:</p>
+      <p class="indent">Optimalisasi pelaksanaan <b>${nama}</b> berpedoman pada ketentuan yang berlaku, yaitu Peraturan Presiden Nomor 12 Tahun 2021 tentang Perubahan atas Peraturan Presiden Nomor 16 Tahun 2018 tentang Pengadaan Barang/Jasa Pemerintah.</p>
+      <p class="indent">Kegiatan ${nama} meliputi pengendalian waktu, biaya, pencapaian sasaran (kuantitas dan kualitas), serta tertib administrasi, mulai dari tahap perencanaan, persiapan, pemilihan penyedia, hingga pengendalian dan pelaksanaan kontrak.</p>
+      <p class="indent">Pelaksanaan pengadaan paket pekerjaan ${nama} ini berupa ${pekerjaan}, yang bersumber dari dana APBN. Diharapkan melalui kegiatan ini dapat terwujud sarana pelayanan yang representatif, nyaman, dan akuntabel guna meningkatkan kualitas pelayanan publik serta mendukung kelancaran pelaksanaan tugas dan fungsi ${E(s.nama || '')}.</p>
+      ${ttdSurat({ kanan: true, jabatan: 'Pejabat Pembuat Komitmen', nama: ppk.nama })}`;
+    return { judul: 'Uraian Singkat Pekerjaan - ' + (pk.nama || ''), html: kop(s) + body };
+  };
+
+  T.sppbj = function (c) {
+    var s = c.satker || {}, pk = c.paket || {}, v = c.penyedia || {}, ppk = c.ppk || {}, m = pk.meta || {};
+    var nilai = Math.round(Number(pk.nilai) || (c.hps && c.hps.rows ? HPS.totalAkhir(c.hps) : 0));
+    var nilaiTeks = nilai
+      ? 'Rp. ' + Fmt.num(nilai, 0) + ',- (' + Fmt.kapital(Fmt.terbilang(nilai)) + ' Rupiah)'
+      : 'Rp. ................,- (........................................................)';
+    var tglTawar = m.tgl_penawaran ? tglPanjang(m.tgl_penawaran) : '..........';
+    var nama = E(pk.nama || '..........');
+    var body = `
+      <table class="tata" style="margin-top:24px">
+        <tr><td style="width:2.4cm">Nomor</td><td style="width:.5cm">:</td><td>${E(c.nomor || '..........')}</td>
+          <td style="text-align:right;white-space:nowrap">${E(c.kota || 'Indramayu')}, ${E(tglPanjang(c.tanggal))}</td></tr>
+        <tr><td>Lampiran</td><td>:</td><td colspan="2">-</td></tr>
+      </table>
+      <p style="margin:28px 0 0;text-align:left">Kepada Yth.</p>
+      <p style="margin:0 0 22px;text-align:left">${E(v.nama || '..........')}</p>
+      <table class="tata"><tr><td style="width:2.4cm">Perihal</td><td style="width:.5cm">:</td>
+        <td style="text-align:justify"><b>Penunjukan Penyedia untuk Pelaksanaan Paket Pekerjaan ${nama}</b></td></tr></table>
+      <p class="indent" style="margin-top:26px">Dengan ini kami beritahukan bahwa penawaran Saudara tanggal ${E(tglTawar)} tentang Penawaran Pekerjaan ${nama}, dengan hasil negosiasi harga sebesar ${E(nilaiTeks)} kami nyatakan <b>diterima/disetujui.</b></p>
+      <p>Sebagai tindak lanjut dari Surat Penunjukan Penyedia Barang/Jasa (SPPBJ) ini Saudara diharuskan menandatangani SPK paling lambat 14 (empat belas) hari kerja setelah diterbitkannya SPPBJ. Kegagalan Saudara untuk menerima penunjukan ini yang disusun berdasarkan evaluasi terhadap penawaran Saudara, akan dikenakan sanksi sesuai ketentuan dalam Peraturan Presiden Nomor 46 Tahun 2025 Tentang Perubahan Kedua Atas Peraturan Presiden Nomor 16 Tahun 2018.</p>
+      ${ttdSurat({ atas: 'Satuan Kerja ' + (s.nama || ''), jabatan: 'Pejabat Pembuat Komitmen', nama: ppk.nama, nip: ppk.nip })}
+      <p style="margin:16px 0 2px;text-align:left">Tembusan Yth. :</p>
+      <ol class="dasar"><li>KPA ${E(s.nama || '')}</li><li>Pejabat Pengadaan Barang dan Jasa.</li></ol>`;
+    return { judul: 'SPPBJ - ' + (pk.nama || ''), html: kop(s) + body };
+  };
+
+  T.notadinas = function (c) {
+    var s = c.satker || {}, pk = c.paket || {}, ppk = c.ppk || {}, pp = c.pp || {};
+    var nama = E(pk.nama || '..........');
+    var body = `
+      <h1 class="judul" style="margin:28px 0 2px">Nota Dinas</h1>
+      <p class="nomor" style="margin-bottom:24px">NOMOR: ${E(c.nomor || '..........')}</p>
+      ${tabelLabel([
+        ['Yth', E(pp.nama || '..........') + ' (Pejabat Pengadaan Barang dan Jasa)'],
+        ['Dari', E(ppk.nama || '..........') + ' (Pejabat Pembuat Komitmen)'],
+        ['Hal', 'Permohonan Menjadi Pejabat Pengadaan Barang dan Jasa'],
+        ['Tanggal', E(tglPanjang(c.tanggal))]
+      ], 2.4)}
+      ${garisPisah()}
+      <p class="indent">Sehubungan dengan pelaksanaan pekerjaan ${nama} melalui mekanisme ${MEKANISME_PL}, dengan ini kami mengajukan permohonan Pejabat Pengadaan Barang dan Jasa untuk paket non tender ${MEKANISME_PL} sebagai berikut:</p>
+      ${rincianPaket(c, 'Nama paket')}
+      <p class="indent" style="margin-top:14px">Demikian untuk dilaksanakan dan mohon maklum adanya.</p>
+      ${ttdSurat({ kanan: true, jabatan: 'Pejabat Pembuat Komitmen', koma: true, nama: ppk.nama, tebal: true })}
+      <p style="margin:16px 0 2px;text-align:left">Tembusan:</p>
+      <p style="text-align:left">Kuasa Pengguna Anggaran ${E(s.nama || '')}</p>`;
+    return { judul: 'Nota Dinas - ' + (pk.nama || ''), html: kop(s) + body };
   };
 
   /* ---------- penyempurnaan HTML sebelum dipakai ----------

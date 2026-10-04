@@ -194,8 +194,9 @@
           options: [{ value: '', label: '— Pilih metode —' }]
             .concat(METODE_OPSI.map(function (x) { return { value: x, label: x }; }))
             .concat([{ value: 'Lainnya', label: 'Lainnya' }]),
-          onchange: function () { kotakMetodeLain.hidden = this.value !== 'Lainnya'; }
+          onchange: function () { kotakMetodeLain.hidden = this.value !== 'Lainnya'; segarkanPL(); }
         });
+        kotakMetodeLain.querySelector('input').addEventListener('input', function () { segarkanPL(); });
 
         /* jenis kontrak: sama seperti metode di atas — dropdown dari KONTRAK_OPSI dengan
            opsi "Lainnya" yang membuka kotak isian bebas, supaya nilai lama di luar daftar
@@ -233,6 +234,7 @@
           /* combobox: pilih dari daftar atau ketik sendiri; teksnya dicetak di KAK butir 6 */
           { name: 'sumber_dana', label: 'Sumber dana', type: 'combo', options: SUMBER_OPSI,
             value: p.sumber_dana || App.jenis(p.jenis).sumber, placeholder: 'Pilih atau ketik sendiri' },
+          { name: 'kode_rup', label: 'Kode RUP', value: meta.kode_rup || '', placeholder: 'mis. 66024193' },
           { name: 'lokasi', label: 'Lokasi pekerjaan', value: p.lokasi || s.nama, wide: true },
           { name: 'kpa_id', label: 'KPA', type: 'select', value: p.kpa_id || tugas.kpa_id, options: B.opsiDari(pejabat, lbl) },
           { name: 'ppk_id', label: 'PPK', type: 'select', value: p.ppk_id || tugas.ppk_id, options: B.opsiDari(pejabat, lbl) },
@@ -246,18 +248,42 @@
           { k: 'sp', l: 'Surat Pesanan / SPK' }, { k: 'bast', l: 'BAST', gen: 'bast' },
           { k: 'bap', l: 'BA Pemeriksaan Barang', gen: 'bap' }, { k: 'bayar', l: 'BA Pembayaran', gen: 'bayar' },
           { k: 'monev', l: 'Laporan Monev', gen: 'monev' }
-        ].forEach(function (x) {
-          formNo.appendChild(el('div', null, [
+        ].forEach(function (x) { formNo.appendChild(barisSurat(x)); });
+
+        /* dokumen khusus Pengadaan Langsung (Uraian Singkat, SPPBJ, Nota Dinas): barisnya hanya tampil
+           bila metode pengadaan paket = Pengadaan Langsung. Isiannya tetap ikut tersimpan walau disembunyikan. */
+        var kotakPL = el('div', { hidden: true });                     // pembungkus polos: atribut hidden tidak dikalahkan display kelas .rapi
+        var isiPL = el('div.rapi');
+        kotakPL.appendChild(isiPL);
+        isiPL.appendChild(el('div.mini', { style: 'margin-top:4px', text: 'Khusus metode Pengadaan Langsung' }));
+        [
+          { k: 'uraian', l: 'Uraian Pekerjaan Singkat', gen: 'uraian', tanpaNomor: true, tanpaTanggal: true },
+          { k: 'sppbj', l: 'SPPBJ', gen: 'sppbj',
+            tambahan: [{ name: 'tgl_penawaran', label: 'Tanggal penawaran penyedia', type: 'date', value: Fmt.iso(meta.tgl_penawaran) }] },
+          { k: 'notadinas', l: 'Nota Dinas', gen: 'notadinas' }
+        ].forEach(function (x) { isiPL.appendChild(barisSurat(x)); });
+        formNo.appendChild(kotakPL);
+
+        function barisSurat(x) {
+          var isian = [];
+          if (!x.tanpaNomor) isian.push(UI.field({ name: 'no_' + x.k, label: 'Nomor', value: meta['no_' + x.k] || '' }));
+          if (!x.tanpaTanggal) isian.push(UI.field({ name: 'tgl_' + x.k, label: 'Tanggal', type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) }));
+          (x.tambahan || []).forEach(function (f) { isian.push(UI.field(f)); });
+          return el('div', null, [
             el('div.baris', { style: 'justify-content:space-between;margin-bottom:8px' }, [
               el('b', { style: 'font-size:13.5px', text: x.l }),
               x.gen ? el('button.btn.kecil', { type: 'button', onclick: function () { cetakDok(x.gen); } }, 'Pratinjau') : null
             ]),
-            el('div.grid2', null, [
-              x.tanpaNomor ? null : UI.field({ name: 'no_' + x.k, label: 'Nomor', value: meta['no_' + x.k] || '' }),
-              UI.field({ name: 'tgl_' + x.k, label: 'Tanggal', type: 'date', value: Fmt.iso(meta['tgl_' + x.k]) })
-            ])
-          ]));
-        });
+            isian.length ? el('div.grid2', null, isian) : null
+          ]);
+        }
+        function metodeSaatIni() {
+          var v = form.elements.metode ? form.elements.metode.value : (p.metode || '');
+          if (v === 'Lainnya') v = form.elements.metode_lainnya ? form.elements.metode_lainnya.value : '';
+          return String(v || '').trim().toLowerCase();
+        }
+        function segarkanPL() { kotakPL.hidden = metodeSaatIni() !== 'pengadaan langsung'; }
+        segarkanPL();
 
         function simpan(evt) {
           var btn = evt && evt.target ? evt.target.closest('button') : null;
@@ -270,6 +296,8 @@
           if (data.jenis_kontrak === 'Lainnya') data.jenis_kontrak = String(data.jenis_kontrak_lainnya || '').trim();
           delete data.jenis_kontrak_lainnya;
           var m = UI.formData(formNo);
+          m.kode_rup = String(data.kode_rup || '').trim();        // Kode RUP disimpan di meta (kolom Paket tidak berubah)
+          delete data.kode_rup;
           data.meta = JSON.stringify(m);
           return API.call('savePaket', { row: data }, { jsonp: false }).then(function () {
             Store.drop('paket.' + App.state.tahun);
@@ -369,7 +397,7 @@
                   })) : el('div.dok-file', null, [el('span.diam', { text: 'Belum diunggah' })])
               ]),
               el('div.dok-aksi', null, [
-                d.generate ? el('button.btn.kecil', { onclick: function () { cetakDok(d.generate); } }, 'Buat') : null,
+                d.generate && perlu ? el('button.btn.kecil', { onclick: function () { cetakDok(d.generate); } }, 'Buat') : null,
                 d.dari === 'penyedia' && !p.penyedia_id
                   ? el('span.mini', { text: 'pilih penyedia dulu' })
                   : perlu ? el('button.btn.kecil' + (berkas.length && !d.multi ? '' : '.primary'), {

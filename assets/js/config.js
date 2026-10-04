@@ -25,14 +25,22 @@ window.CONFIG = {
   /* rab   : true  = format HPS pemeliharaan (uraian pekerjaan); false = format HPS barang
      ppn   : false = tanpa PPN (kolom PPN tidak ada, BA Pembayaran tanpa rincian PPN)
      sumber: isian awal "Sumber dana" (boleh diubah/diketik bebas di tab Data paket)
+     uraian: frasa jenis pekerjaan pada dokumen "Uraian Singkat Pekerjaan" (Pengadaan Langsung):
+             "...paket pekerjaan <nama paket> ini berupa <uraian>, yang bersumber dari dana APBN" 
      id adalah ID tetap yang tersimpan di data paket — jangan diubah, cukup ubah "nama". */
   JENIS_PENGADAAN: [
-    { id: 'gedung_rm',       nama: 'Pemeliharaan Gedung dan Bangunan (Perkantoran)', rab: true,  ppn: true,  sumber: 'DIPA Operasional Perkantoran' },
-    { id: 'gedung_bos',      nama: 'Pemeliharaan Gedung dan Bangunan (BOS)',          rab: true,  ppn: true,  sumber: 'DIPA (BOS)' },
-    { id: 'peralatan',       nama: 'Peralatan dan Mesin',                              rab: false, ppn: true,  sumber: 'DIPA Satker' },
-    { id: 'ekstra',          nama: 'Ekstrakomptabel',                                  rab: false, ppn: true,  sumber: 'DIPA Satker' },
-    { id: 'belanja_lainnya', nama: 'Belanja Lainnya',                                  rab: false, ppn: true,  sumber: 'DIPA Satker' },
-    { id: 'buku',            nama: 'Belanja Lainnya (Buku)',                           rab: false, ppn: false, sumber: 'DIPA (BOS)' }
+    { id: 'gedung_rm',       nama: 'Pemeliharaan Gedung dan Bangunan (Perkantoran)', rab: true,  ppn: true,  sumber: 'DIPA Operasional Perkantoran',
+      uraian: 'pekerjaan konstruksi/rehabilitasi ruang layanan, penataan interior dan sistem pendukung pelayanan' },
+    { id: 'gedung_bos',      nama: 'Pemeliharaan Gedung dan Bangunan (BOS)',          rab: true,  ppn: true,  sumber: 'DIPA (BOS)',
+      uraian: 'pekerjaan konstruksi/rehabilitasi ruang layanan, penataan interior dan sistem pendukung pelayanan' },
+    { id: 'peralatan',       nama: 'Peralatan dan Mesin',                              rab: false, ppn: true,  sumber: 'DIPA Satker',
+      uraian: 'pengadaan peralatan dan mesin pendukung pelayanan' },
+    { id: 'ekstra',          nama: 'Ekstrakomptabel',                                  rab: false, ppn: true,  sumber: 'DIPA Satker',
+      uraian: 'pengadaan barang ekstrakomptabel pendukung pelayanan' },
+    { id: 'belanja_lainnya', nama: 'Belanja Lainnya',                                  rab: false, ppn: true,  sumber: 'DIPA Satker',
+      uraian: 'pengadaan barang/jasa pendukung pelayanan' },
+    { id: 'buku',            nama: 'Belanja Lainnya (Buku)',                           rab: false, ppn: false, sumber: 'DIPA (BOS)',
+      uraian: 'pengadaan buku' }
   ],
 
   /* opsi combobox "Sumber dana" pada tab Data paket — boleh juga diketik bebas. Teks yang dipilih/diketik
@@ -76,10 +84,10 @@ window.CONFIG = {
     { kode: 11, nama: 'Faktur dan Bupot', bersyarat: 'ada_pph', multi: true },
     { kode: 12, nama: 'Company profile', dari: 'penyedia' },
     { kode: 13, nama: 'Hasil monev dan dokumentasi', multi: true, generate: 'monev' },
-    /* khusus Pengadaan Langsung — template cetaknya menyusul (tambahkan generate: '...' bila sudah ada) */
-    { kode: 16, nama: 'Uraian pekerjaan singkat', hanyaMetode: ['Pengadaan Langsung'] },
-    { kode: 17, nama: 'SPPBJ',                    hanyaMetode: ['Pengadaan Langsung'] },
-    { kode: 18, nama: 'Nota Dinas',               hanyaMetode: ['Pengadaan Langsung'] },
+    /* khusus Pengadaan Langsung — dapat dibuat otomatis (docgen.js: T.uraian, T.sppbj, T.notadinas) */
+    { kode: 16, nama: 'Uraian pekerjaan singkat', hanyaMetode: ['Pengadaan Langsung'], generate: 'uraian' },
+    { kode: 17, nama: 'SPPBJ',                    hanyaMetode: ['Pengadaan Langsung'], generate: 'sppbj' },
+    { kode: 18, nama: 'Nota Dinas',               hanyaMetode: ['Pengadaan Langsung'], generate: 'notadinas' },
     /* khusus pemeliharaan gedung */
     { kode: 19, nama: 'Siteplan',                 hanyaJenis: ['gedung_rm', 'gedung_bos'] }
   ],
@@ -99,7 +107,11 @@ window.CONFIG = {
     { id: 'bast',   nama: 'BAST Manual',              field: 'no_bast',   kode: 8 },
     { id: 'monev',  nama: 'Laporan Monev',            field: 'no_monev',  kode: 13 },
     { id: 'bap',    nama: 'BA Pemeriksaan Barang',    field: 'no_bap',    kode: 14 },
-    { id: 'bayar',  nama: 'BA Pembayaran',            field: 'no_bayar',  kode: 15 }
+    { id: 'bayar',  nama: 'BA Pembayaran',            field: 'no_bayar',  kode: 15 },
+    /* khusus Pengadaan Langsung. Uraian Singkat tidak bernomor/bertanggal; SPPBJ dan Nota Dinas punya nomor & tanggal sendiri */
+    { id: 'uraian',    nama: 'Uraian Singkat Pekerjaan', field: 'no_uraian',    kode: 16, tanpaNomor: true },
+    { id: 'sppbj',     nama: 'SPPBJ',                    field: 'no_sppbj',     kode: 17 },
+    { id: 'notadinas', nama: 'Nota Dinas',               field: 'no_notadinas', kode: 18 }
   ]
 };
 
